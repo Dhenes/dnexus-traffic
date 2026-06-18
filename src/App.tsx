@@ -4,6 +4,7 @@ import {
   TrendingDown,
   DollarSign,
   Eye,
+  EyeOff,
   MousePointerClick,
   Target,
   Percent,
@@ -21,7 +22,9 @@ import {
   Shield,
   Edit2,
   Trash2,
-  X
+  X,
+  ChevronDown,
+  Search
 } from 'lucide-react';
 import {
   AreaChart,
@@ -116,6 +119,7 @@ interface Client {
 interface UserListItem {
   id: string;
   email: string;
+  username?: string;
   role: string;
   client_id: string;
   client_name?: string;
@@ -238,6 +242,7 @@ export default function App() {
   const [newClientName, setNewClientName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserUsername, setNewUserUsername] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'client'>('client');
   const [newUserClientIds, setNewUserClientIds] = useState<string[]>([]);
 
@@ -249,11 +254,24 @@ export default function App() {
   const [editingUserRole, setEditingUserRole] = useState<'admin' | 'client'>('client');
   const [editingUserClientIds, setEditingUserClientIds] = useState<string[]>([]);
   const [editingUserPassword, setEditingUserPassword] = useState<string>('');
+  const [editingUserUsername, setEditingUserUsername] = useState<string>('');
 
   const [isSandbox, setIsSandbox] = useState(true);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const [lastUpdates, setLastUpdates] = useState<{
+    meta: number;
+    google: number;
+    tiktok: number;
+  }>({ meta: 0, google: 0, tiktok: 0 });
+  const [now, setNow] = useState(Date.now());
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [showNewUserPassword, setShowNewUserPassword] = useState(false);
+  const [showEditingUserPassword, setShowEditingUserPassword] = useState(false);
+  const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
+  const [clientSearchQuery, setClientSearchQuery] = useState('');
 
   // Raw DB data state
   const [dbData, setDbData] = useState<{
@@ -282,6 +300,28 @@ export default function App() {
     }
     return fetch(url, { ...options, headers });
   };
+
+  // Dynamic timer to update rate limit countdowns in real-time
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 10000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Close custom client dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.custom-search-dropdown')) {
+        setSearchDropdownOpen(false);
+      }
+    };
+    if (searchDropdownOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [searchDropdownOpen]);
 
   // Check backend server and session on mount
   useEffect(() => {
@@ -334,10 +374,11 @@ export default function App() {
       // Mock Sandbox Login
       setTimeout(() => {
         let mockUser: AuthUser;
-        if (loginEmail.includes('admin')) {
+        const normalizedEmail = loginEmail.includes('@') ? loginEmail : `${loginEmail}@dnexus.com`;
+        if (loginEmail.toLowerCase().includes('admin')) {
           mockUser = {
             id: 'u_admin',
-            email: loginEmail,
+            email: normalizedEmail,
             role: 'admin',
             clientId: '',
             clientName: ''
@@ -351,7 +392,7 @@ export default function App() {
         } else {
           mockUser = {
             id: 'u_client',
-            email: loginEmail,
+            email: normalizedEmail,
             role: 'client',
             clientId: 'c_alfa',
             clientName: 'Cliente Alfa (Varejo)',
@@ -452,6 +493,16 @@ export default function App() {
     if (isSandbox) {
       setTimeout(() => {
         setDbData(generateMockData(targetId));
+        // Mock load lastUpdates
+        const savedMetaLast = localStorage.getItem(`dnexus_last_meta_${targetId}`);
+        const savedGoogleLast = localStorage.getItem(`dnexus_last_google_${targetId}`);
+        const savedTiktokLast = localStorage.getItem(`dnexus_last_tiktok_${targetId}`);
+        setLastUpdates({
+          meta: savedMetaLast ? parseInt(savedMetaLast, 10) : Date.now() - 45 * 60 * 1000,
+          google: savedGoogleLast ? parseInt(savedGoogleLast, 10) : 0,
+          tiktok: savedTiktokLast ? parseInt(savedTiktokLast, 10) : 0
+        });
+
         // Mock load credentials
         const savedCreds = localStorage.getItem(`dnexus_creds_${targetId}`);
         if (savedCreds) {
@@ -472,6 +523,9 @@ export default function App() {
         if (metRes.ok) {
           const data = await metRes.json();
           setDbData(data);
+          if (data.lastUpdates) {
+            setLastUpdates(data.lastUpdates);
+          }
         }
         
         // Load credentials
@@ -492,6 +546,14 @@ export default function App() {
     loadData();
   }, [currentUser, selectedClientId, dateRange, isSandbox]);
 
+  // Determine active platform
+  const getActivePlatform = (): 'meta' | 'google' | 'tiktok' | 'all' => {
+    if (activeTab === 'meta') return 'meta';
+    if (activeTab === 'google') return 'google';
+    if (activeTab === 'tiktok') return 'tiktok';
+    return 'all';
+  };
+
   // Sync metrics
   const handleSync = async () => {
     if (!currentUser) return;
@@ -505,15 +567,36 @@ export default function App() {
     setSyncing(true);
     showToast('Buscando métricas nas APIs...', 'info');
 
+    const activePlatform = getActivePlatform();
+
     if (isSandbox) {
       setTimeout(() => {
+        const syncTimestamp = Date.now();
+        if (activePlatform === 'all') {
+          localStorage.setItem(`dnexus_last_meta_${targetId}`, syncTimestamp.toString());
+          localStorage.setItem(`dnexus_last_google_${targetId}`, syncTimestamp.toString());
+          localStorage.setItem(`dnexus_last_tiktok_${targetId}`, syncTimestamp.toString());
+          setLastUpdates({
+            meta: syncTimestamp,
+            google: syncTimestamp,
+            tiktok: syncTimestamp
+          });
+        } else {
+          localStorage.setItem(`dnexus_last_${activePlatform}_${targetId}`, syncTimestamp.toString());
+          setLastUpdates(prev => ({
+            ...prev,
+            [activePlatform]: syncTimestamp
+          }));
+        }
+
         setDbData(generateMockData(targetId));
         setSyncing(false);
         showToast('Dados sincronizados no Sandbox!', 'success');
       }, 1500);
     } else {
       try {
-        const res = await authenticatedFetch(`/api/sync?clientId=${targetId}`, { method: 'POST' });
+        const platformParam = activePlatform !== 'all' ? `&platform=${activePlatform}` : '';
+        const res = await authenticatedFetch(`/api/sync?clientId=${targetId}${platformParam}`, { method: 'POST' });
         if (res.ok) {
           const result = await res.json();
           showToast(result.summary, 'success');
@@ -643,6 +726,7 @@ export default function App() {
       const newU: UserListItem = {
         id: 'u_' + Math.random().toString(36).substring(2, 6),
         email: newUserEmail,
+        username: newUserUsername,
         role: newUserRole,
         client_id: newUserRole === 'admin' ? '' : firstId,
         client_name: newUserRole === 'admin' ? '' : firstClientName,
@@ -652,6 +736,7 @@ export default function App() {
       };
       setUsersList([newU, ...usersList]);
       setNewUserEmail('');
+      setNewUserUsername('');
       setNewUserPassword('');
       setNewUserClientIds([]);
       showToast('Usuário criado no Sandbox!', 'success');
@@ -662,6 +747,7 @@ export default function App() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             email: newUserEmail,
+            username: newUserUsername,
             password: newUserPassword,
             role: newUserRole,
             clientIds: newUserClientIds,
@@ -678,6 +764,7 @@ export default function App() {
             clientNames: clientNames
           }, ...usersList]);
           setNewUserEmail('');
+          setNewUserUsername('');
           setNewUserPassword('');
           setNewUserClientIds([]);
           showToast('Usuário criado com sucesso!', 'success');
@@ -821,6 +908,7 @@ export default function App() {
       setUsersList(usersList.map(u => u.id === editingUserId ? {
         ...u,
         email: editingUserEmail,
+        username: editingUserUsername,
         role: editingUserRole,
         client_id: editingUserRole === 'admin' ? '' : firstId,
         client_name: editingUserRole === 'admin' ? '' : clientName,
@@ -829,6 +917,7 @@ export default function App() {
       } : u));
       setEditingUserId(null);
       setEditingUserEmail('');
+      setEditingUserUsername('');
       setEditingUserPassword('');
       setEditingUserClientIds([]);
       showToast('Usuário atualizado no Sandbox!', 'success');
@@ -841,6 +930,7 @@ export default function App() {
           body: JSON.stringify({
             id: editingUserId,
             email: editingUserEmail,
+            username: editingUserUsername,
             password: editingUserPassword,
             role: editingUserRole,
             clientIds: editingUserClientIds,
@@ -854,6 +944,7 @@ export default function App() {
           setUsersList(usersList.map(u => u.id === editingUserId ? {
             ...u,
             email: editingUserEmail,
+            username: editingUserUsername,
             role: editingUserRole,
             client_id: editingUserRole === 'admin' ? '' : firstId,
             client_name: editingUserRole === 'admin' ? '' : clientName,
@@ -862,6 +953,7 @@ export default function App() {
           } : u));
           setEditingUserId(null);
           setEditingUserEmail('');
+          setEditingUserUsername('');
           setEditingUserPassword('');
           setEditingUserClientIds([]);
           showToast('Usuário atualizado com sucesso!', 'success');
@@ -1106,12 +1198,12 @@ export default function App() {
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div className="form-group">
-              <label className="form-label">E-mail</label>
+              <label className="form-label">E-mail ou Usuário</label>
               <input
-                type="email"
+                type="text"
                 className="form-input"
                 required
-                placeholder="Ex: admin@dnexus.com"
+                placeholder="Ex: admin ou admin@dnexus.com"
                 value={loginEmail}
                 onChange={(e) => setLoginEmail(e.target.value)}
               />
@@ -1119,14 +1211,34 @@ export default function App() {
             
             <div className="form-group">
               <label className="form-label">Senha</label>
-              <input
-                type="password"
-                className="form-input"
-                required
-                placeholder="Sua senha"
-                value={loginPassword}
-                onChange={(e) => setLoginPassword(e.target.value)}
-              />
+              <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                <input
+                  type={showLoginPassword ? 'text' : 'password'}
+                  className="form-input"
+                  required
+                  placeholder="Sua senha"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  style={{ paddingRight: '40px', width: '100%' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowLoginPassword(!showLoginPassword)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--text-secondary)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: 0
+                  }}
+                >
+                  {showLoginPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -1274,15 +1386,134 @@ export default function App() {
           <div className="header-controls">
             {loading && <span style={{ color: 'var(--text-secondary)', fontSize: '13px', marginRight: '8px' }}>Carregando...</span>}
             
-            {/* Multi-client selector */}
-            {((currentUser.role === 'admin') || (currentUser.role === 'client' && currentUser.clients && currentUser.clients.length > 1)) && activeTab !== 'clients' && (
-              <select className="date-selector" style={{ border: '1px solid var(--color-primary)' }} value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)}>
-                {currentUser.role === 'admin' && <option value="" disabled>Selecione um Cliente</option>}
-                {(currentUser.role === 'admin' ? clients : (currentUser.clients || [])).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            )}
+            {/* Multi-client selector (Custom Searchable Dropdown) */}
+            {((currentUser.role === 'admin') || (currentUser.role === 'client' && currentUser.clients && currentUser.clients.length > 1)) && activeTab !== 'clients' && (() => {
+              const clientOptions = currentUser.role === 'admin' ? clients : (currentUser.clients || []);
+              const filteredClients = clientOptions.filter(c => 
+                c.name.toLowerCase().includes(clientSearchQuery.toLowerCase())
+              );
+              const selectedClient = clientOptions.find(c => c.id === selectedClientId);
+
+              return (
+                <div className="custom-search-dropdown" style={{ position: 'relative' }}>
+                  <div 
+                    className="date-selector" 
+                    style={{ 
+                      border: '1px solid var(--color-primary)', 
+                      minWidth: '220px', 
+                      justifyContent: 'space-between',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setSearchDropdownOpen(!searchDropdownOpen)}
+                  >
+                    <span style={{ 
+                      whiteSpace: 'nowrap', 
+                      overflow: 'hidden', 
+                      textOverflow: 'ellipsis', 
+                      maxWidth: '180px' 
+                    }}>
+                      {selectedClient ? selectedClient.name : 'Selecione um Cliente'}
+                    </span>
+                    <ChevronDown size={16} style={{ flexShrink: 0 }} />
+                  </div>
+
+                  {searchDropdownOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      marginTop: '8px',
+                      backgroundColor: '#0f131c',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '12px',
+                      boxShadow: 'var(--shadow-lg)',
+                      zIndex: 1000,
+                      minWidth: '260px',
+                      padding: '8px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px'
+                    }}>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+                        <input
+                          type="text"
+                          placeholder="Buscar empresa..."
+                          value={clientSearchQuery}
+                          onChange={(e) => setClientSearchQuery(e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            width: '100%',
+                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '8px',
+                            color: 'var(--text-primary)',
+                            padding: '8px 12px 8px 30px',
+                            fontSize: '13px',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      
+                      <div style={{
+                        maxHeight: '200px',
+                        overflowY: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px'
+                      }}>
+                        {filteredClients.map((c) => (
+                          <div
+                            key={c.id}
+                            onClick={() => {
+                              setSelectedClientId(c.id);
+                              setSearchDropdownOpen(false);
+                              setClientSearchQuery('');
+                            }}
+                            style={{
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              cursor: 'pointer',
+                              fontSize: '13px',
+                              color: selectedClientId === c.id ? 'var(--text-primary)' : 'var(--text-secondary)',
+                              backgroundColor: selectedClientId === c.id ? 'var(--color-primary-glow)' : 'transparent',
+                              transition: 'background var(--transition-fast)',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}
+                            onMouseEnter={(e) => {
+                              if (selectedClientId !== c.id) {
+                                e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                e.currentTarget.style.color = 'var(--text-primary)';
+                              }
+                            }}
+                            onMouseLeave={(e) => {
+                              if (selectedClientId !== c.id) {
+                                e.currentTarget.style.backgroundColor = 'transparent';
+                                e.currentTarget.style.color = 'var(--text-secondary)';
+                              }
+                            }}
+                          >
+                            {c.name}
+                          </div>
+                        ))}
+                        {filteredClients.length === 0 && (
+                          <div style={{
+                            padding: '8px 12px',
+                            fontSize: '13px',
+                            color: 'var(--text-muted)',
+                            textAlign: 'center'
+                          }}>
+                            Nenhuma empresa encontrada
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {activeTab !== 'settings' && activeTab !== 'clients' && (
               <select className="date-selector" value={dateRange} onChange={(e) => setDateRange(e.target.value as any)}>
@@ -1292,12 +1523,54 @@ export default function App() {
               </select>
             )}
 
-            {activeTab !== 'clients' && (
-              <button className="control-btn control-btn-primary" onClick={handleSync} disabled={syncing}>
-                <RefreshCw className={syncing ? 'spin-anim' : ''} size={16} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
-                {syncing ? 'Sincronizando...' : 'Atualizar Dados'}
-              </button>
-            )}
+            {activeTab !== 'clients' && (() => {
+              const activePlatform = getActivePlatform();
+              const lastSyncTime = activePlatform === 'meta' ? lastUpdates.meta :
+                                   activePlatform === 'google' ? lastUpdates.google :
+                                   activePlatform === 'tiktok' ? lastUpdates.tiktok :
+                                   Math.max(lastUpdates.meta, lastUpdates.google, lastUpdates.tiktok);
+              
+              const oneHourMs = 3600000;
+              const isRateLimited = currentUser?.role === 'client' && lastSyncTime > 0 && (now - lastSyncTime) < oneHourMs;
+              const minutesLeft = isRateLimited ? Math.ceil((oneHourMs - (now - lastSyncTime)) / 60000) : 0;
+
+              const formatLastSyncText = () => {
+                if (lastSyncTime === 0) return 'Sem atualizações anteriores';
+                const dateObj = new Date(lastSyncTime);
+                const dateStr = dateObj.toLocaleDateString('pt-BR');
+                const timeStr = dateObj.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                
+                if (isRateLimited) {
+                  return `Atualizado: ${dateStr} às ${timeStr} (Aguarde ${minutesLeft} min)`;
+                }
+                return `Última atualização: ${dateStr} às ${timeStr}`;
+              };
+
+              return (
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <button 
+                    className="control-btn control-btn-primary" 
+                    onClick={handleSync} 
+                    disabled={syncing || isRateLimited}
+                    style={{
+                      opacity: (syncing || isRateLimited) ? 0.6 : 1,
+                      cursor: (syncing || isRateLimited) ? 'not-allowed' : 'pointer'
+                    }}
+                  >
+                    <RefreshCw className={syncing ? 'spin-anim' : ''} size={16} style={{ animation: syncing ? 'spin 1s linear infinite' : 'none' }} />
+                    {syncing ? 'Sincronizando...' : 'Atualizar Dados'}
+                  </button>
+                  <span style={{ 
+                    fontSize: '11px', 
+                    color: isRateLimited ? 'var(--color-danger)' : 'var(--text-muted)',
+                    fontWeight: 500,
+                    marginRight: '4px'
+                  }}>
+                    {formatLastSyncText()}
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </header>
 
@@ -2176,15 +2449,54 @@ export default function App() {
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Senha {editingUserId && '(Deixe em branco para não alterar)'}</label>
+                      <label className="form-label">Nome de Usuário (Username)</label>
                       <input
-                        type="password"
+                        type="text"
                         className="form-input"
-                        required={!editingUserId}
-                        placeholder={editingUserId ? 'Nova senha opcional' : 'Senha provisória'}
-                        value={editingUserId ? editingUserPassword : newUserPassword}
-                        onChange={(e) => editingUserId ? setEditingUserPassword(e.target.value) : setNewUserPassword(e.target.value)}
+                        placeholder="Ex: fulano"
+                        value={editingUserId ? editingUserUsername : newUserUsername}
+                        onChange={(e) => editingUserId ? setEditingUserUsername(e.target.value) : setNewUserUsername(e.target.value)}
                       />
+                    </div>
+                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                      <label className="form-label">Senha {editingUserId && '(Deixe em branco para não alterar)'}</label>
+                      <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <input
+                          type={editingUserId ? (showEditingUserPassword ? 'text' : 'password') : (showNewUserPassword ? 'text' : 'password')}
+                          className="form-input"
+                          required={!editingUserId}
+                          placeholder={editingUserId ? 'Nova senha opcional' : 'Senha provisória'}
+                          value={editingUserId ? editingUserPassword : newUserPassword}
+                          onChange={(e) => editingUserId ? setEditingUserPassword(e.target.value) : setNewUserPassword(e.target.value)}
+                          style={{ paddingRight: '40px', width: '100%' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (editingUserId) {
+                              setShowEditingUserPassword(!showEditingUserPassword);
+                            } else {
+                              setShowNewUserPassword(!showNewUserPassword);
+                            }
+                          }}
+                          style={{
+                            position: 'absolute',
+                            right: '12px',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            padding: 0
+                          }}
+                        >
+                          {editingUserId 
+                            ? (showEditingUserPassword ? <EyeOff size={18} /> : <Eye size={18} />)
+                            : (showNewUserPassword ? <EyeOff size={18} /> : <Eye size={18} />)
+                          }
+                        </button>
+                      </div>
                     </div>
                     <div className="form-group">
                       <label className="form-label">Nível de Acesso (Cargo)</label>
@@ -2270,7 +2582,10 @@ export default function App() {
                       <tbody>
                         {usersList.map((u, i) => (
                           <tr key={i}>
-                            <td style={{ fontWeight: 600 }}>{u.email}</td>
+                            <td style={{ fontWeight: 600 }}>
+                              <div>{u.email}</div>
+                              <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 400 }}>Usuário: {u.username || '-'}</div>
+                            </td>
                             <td>
                               {u.role === 'admin' ? (
                                 <span className="badge badge-meta">Admin Master</span>
@@ -2289,6 +2604,7 @@ export default function App() {
                                 <button onClick={() => {
                                   setEditingUserId(u.id);
                                   setEditingUserEmail(u.email);
+                                  setEditingUserUsername(u.username || '');
                                   setEditingUserRole(u.role as any);
                                   setEditingUserClientIds(u.clientIds || (u.client_id ? [u.client_id] : []));
                                   setEditingUserPassword('');

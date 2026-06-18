@@ -21,12 +21,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const secret = context.env.JWT_SECRET || DEFAULT_SECRET;
 
-    // Consultar usuário no D1
+    // Consultar usuário no D1 (por e-mail ou nome de usuário)
     const userRow: any = await context.env.DB.prepare(`
       SELECT id, email, password_hash, role
       FROM users
-      WHERE email = ?
-    `).bind(email.toLowerCase().trim()).first();
+      WHERE email = ? OR username = ?
+    `).bind(email.toLowerCase().trim(), email.toLowerCase().trim()).first();
 
     if (!userRow) {
       return new Response(JSON.stringify({ error: 'Credenciais inválidas' }), {

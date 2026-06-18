@@ -253,6 +253,74 @@ var onRequestPost2 = /* @__PURE__ */ __name2(async (context) => {
     });
   }
 }, "onRequestPost");
+var onRequestPut = /* @__PURE__ */ __name2(async (context) => {
+  try {
+    const secret = context.env.JWT_SECRET || DEFAULT_SECRET3;
+    const authUser = await getAuthUser(context.request, secret);
+    if (!authUser || authUser.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Acesso negado" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const body = await context.request.json();
+    const { id, name } = body;
+    if (!id || !name || !name.trim()) {
+      return new Response(JSON.stringify({ error: "ID e nome s\xE3o obrigat\xF3rios" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    await context.env.DB.prepare(
+      "UPDATE clients SET name = ? WHERE id = ?"
+    ).bind(name.trim(), id).run();
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}, "onRequestPut");
+var onRequestDelete = /* @__PURE__ */ __name2(async (context) => {
+  try {
+    const secret = context.env.JWT_SECRET || DEFAULT_SECRET3;
+    const authUser = await getAuthUser(context.request, secret);
+    if (!authUser || authUser.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Acesso negado" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const url = new URL(context.request.url);
+    const id = url.searchParams.get("id");
+    if (!id) {
+      return new Response(JSON.stringify({ error: "ID do cliente \xE9 obrigat\xF3rio" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const db = context.env.DB;
+    await db.batch([
+      db.prepare("DELETE FROM ad_credentials WHERE client_id = ?").bind(id),
+      db.prepare("DELETE FROM meta_daily_metrics WHERE client_id = ?").bind(id),
+      db.prepare("DELETE FROM google_daily_metrics WHERE client_id = ?").bind(id),
+      db.prepare("DELETE FROM tiktok_daily_metrics WHERE client_id = ?").bind(id),
+      db.prepare("DELETE FROM users WHERE client_id = ?").bind(id),
+      db.prepare("DELETE FROM clients WHERE id = ?").bind(id)
+    ]);
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}, "onRequestDelete");
 var DEFAULT_SECRET4 = "dnexus_super_secret_key_2026";
 var onRequestGet3 = /* @__PURE__ */ __name2(async (context) => {
   try {
@@ -526,110 +594,29 @@ var onRequestPost4 = /* @__PURE__ */ __name2(async (context) => {
       });
       metaSyncSummary = `Meta Ads: ${insights.length} registros reais importados.`;
     } else {
-      const scale = targetClientId === "c_alfa" ? 1.6 : 0.8;
-      const clientSuffix2 = targetClientId === "c_alfa" ? "Alfa" : "Beta";
-      const campaignsMeta = [
-        { id: "m_c1", name: `Meta_Convers\xE3o_Ebook_${clientSuffix2}` },
-        { id: "m_c2", name: `Meta_Lookalike_Compradores_${clientSuffix2}` },
-        { id: "m_c3", name: `Meta_Remarketing_Carrinho_${clientSuffix2}` }
-      ];
-      for (let i = 29; i >= 0; i--) {
-        const d = /* @__PURE__ */ new Date();
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split("T")[0];
-        campaignsMeta.forEach((c) => {
-          const rand = (Math.sin(i * 0.5) * 0.2 + 1) * scale;
-          const reach = Math.round((5e3 + Math.random() * 2e3) * rand);
-          const impressions = Math.round(reach * (1.1 + Math.random() * 0.2));
-          const clicks = Math.round(impressions * (0.015 + Math.random() * 0.01));
-          const spend = parseFloat(((150 + Math.random() * 80) * rand).toFixed(2));
-          const conversions = Math.round(clicks * (0.05 + Math.random() * 0.04));
-          const id = `${targetClientId}_meta_${c.id}_${dateStr}`;
-          batchStatements.push(
-            context.env.DB.prepare(`
-              INSERT INTO meta_daily_metrics (id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, updated_at)
-              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-              ON CONFLICT(id) DO UPDATE SET
-                campaign_name = ?5,
-                reach = ?6,
-                impressions = ?7,
-                clicks = ?8,
-                spend = ?9,
-                conversions_actions = ?10,
-                updated_at = ?11
-            `).bind(id, targetClientId, dateStr, c.id, c.name, reach, impressions, clicks, spend, conversions, timestamp)
-          );
-        });
-      }
-      metaSyncSummary = `Meta Ads: 90 registros simulados gerados.`;
+      metaSyncSummary = "Meta Ads: N\xE3o configurado.";
     }
-    const scaleFactor = targetClientId === "c_alfa" ? 1.8 : 0.8;
-    const clientSuffix = targetClientId === "c_alfa" ? "Alfa" : "Beta";
-    const campaignsGoogle = [
-      { id: "g_c1", name: `Google_Pesquisa_Marca_${clientSuffix}` },
-      { id: "g_c2", name: `Google_PMax_Produtos_${clientSuffix}` },
-      { id: "g_c3", name: `Google_Display_${clientSuffix}` }
-    ];
-    const campaignsTiktok = [
-      { id: "t_c1", name: `TikTok_Desafio30d_${clientSuffix}` },
-      { id: "t_c2", name: `TikTok_Influenciadores_${clientSuffix}` }
-    ];
-    for (let i = 29; i >= 0; i--) {
-      const d = /* @__PURE__ */ new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split("T")[0];
-      campaignsGoogle.forEach((c) => {
-        const rand = (Math.cos(i * 0.4) * 0.25 + 1) * scaleFactor;
-        const impressions = Math.round((8e3 + Math.random() * 3e3) * rand);
-        const clicks = Math.round(impressions * (0.03 + Math.random() * 0.02));
-        const cost = parseFloat(((200 + Math.random() * 120) * rand).toFixed(2));
-        const conversions = parseFloat((clicks * (0.04 + Math.random() * 0.03)).toFixed(1));
-        const conversions_value = parseFloat((conversions * (85 + Math.random() * 30)).toFixed(2));
-        const id = `${targetClientId}_google_${c.id}_${dateStr}`;
-        batchStatements.push(
-          context.env.DB.prepare(`
-            INSERT INTO google_daily_metrics (id, client_id, date, campaign_id, campaign_name, impressions, clicks, cost, conversions, conversions_value, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-            ON CONFLICT(id) DO UPDATE SET
-              campaign_name = ?5,
-              impressions = ?6,
-              clicks = ?7,
-              cost = ?8,
-              conversions = ?9,
-              conversions_value = ?10,
-              updated_at = ?11
-          `).bind(id, targetClientId, dateStr, c.id, c.name, impressions, clicks, cost, conversions, conversions_value, timestamp)
-        );
-      });
-      campaignsTiktok.forEach((c) => {
-        const rand = (Math.sin(i * 0.6) * 0.3 + 1) * scaleFactor;
-        const impressions = Math.round((12e3 + Math.random() * 5e3) * rand);
-        const clicks = Math.round(impressions * (8e-3 + Math.random() * 6e-3));
-        const spend = parseFloat(((100 + Math.random() * 50) * rand).toFixed(2));
-        const conversion = Math.round(clicks * (0.03 + Math.random() * 0.03));
-        const real_time_conversion = Math.round(conversion * (0.9 + Math.random() * 0.15));
-        const id = `${targetClientId}_tiktok_${c.id}_${dateStr}`;
-        batchStatements.push(
-          context.env.DB.prepare(`
-            INSERT INTO tiktok_daily_metrics (id, client_id, date, campaign_id, campaign_name, impressions, clicks, spend, conversion, real_time_conversion, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-            ON CONFLICT(id) DO UPDATE SET
-              campaign_name = ?5,
-              impressions = ?6,
-              clicks = ?7,
-              spend = ?8,
-              conversion = ?9,
-              real_time_conversion = ?10,
-              updated_at = ?11
-          `).bind(id, targetClientId, dateStr, c.id, c.name, impressions, clicks, spend, conversion, real_time_conversion, timestamp)
-        );
-      });
+    let googleSyncSummary = "Google Ads: N\xE3o configurado.";
+    let tiktokSyncSummary = "TikTok Ads: N\xE3o configurado.";
+    const googleCredRow = await context.env.DB.prepare(
+      "SELECT status FROM ad_credentials WHERE client_id = ? AND platform = ?"
+    ).bind(targetClientId, "google").first();
+    if (googleCredRow) {
+      googleSyncSummary = "Google Ads: Conectado (integra\xE7\xE3o futura).";
     }
-    await context.env.DB.batch(batchStatements);
+    const tiktokCredRow = await context.env.DB.prepare(
+      "SELECT status FROM ad_credentials WHERE client_id = ? AND platform = ?"
+    ).bind(targetClientId, "tiktok").first();
+    if (tiktokCredRow) {
+      tiktokSyncSummary = "TikTok Ads: Conectado (integra\xE7\xE3o futura).";
+    }
+    if (batchStatements.length > 0) {
+      await context.env.DB.batch(batchStatements);
+    }
     return new Response(
       JSON.stringify({
         success: true,
-        summary: `${metaSyncSummary} Google e TikTok Ads: simulados.`
+        summary: `${metaSyncSummary} | ${googleSyncSummary} | ${tiktokSyncSummary}`
       }),
       {
         headers: { "Content-Type": "application/json" }
@@ -726,6 +713,92 @@ var onRequestPost5 = /* @__PURE__ */ __name2(async (context) => {
     });
   }
 }, "onRequestPost");
+var onRequestPut2 = /* @__PURE__ */ __name2(async (context) => {
+  try {
+    const secret = context.env.JWT_SECRET || DEFAULT_SECRET7;
+    const authUser = await getAuthUser(context.request, secret);
+    if (!authUser || authUser.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Acesso negado" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const body = await context.request.json();
+    const { id, email, password, role, clientId } = body;
+    if (!id || !email || !role) {
+      return new Response(JSON.stringify({ error: "ID, e-mail e n\xEDvel de acesso s\xE3o obrigat\xF3rios" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (role === "client" && !clientId) {
+      return new Response(JSON.stringify({ error: "Clientes precisam estar associados a uma empresa" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    let query = "";
+    let params = [];
+    if (password && password.trim().length > 0) {
+      const passwordHash = await hashPassword(password);
+      query = "UPDATE users SET email = ?, password_hash = ?, role = ?, client_id = ? WHERE id = ?";
+      params = [email.toLowerCase().trim(), passwordHash, role, role === "admin" ? null : clientId, id];
+    } else {
+      query = "UPDATE users SET email = ?, role = ?, client_id = ? WHERE id = ?";
+      params = [email.toLowerCase().trim(), role, role === "admin" ? null : clientId, id];
+    }
+    await context.env.DB.prepare(query).bind(...params).run();
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (error) {
+    if (error.message.includes("UNIQUE constraint failed")) {
+      return new Response(JSON.stringify({ error: "Este endere\xE7o de e-mail j\xE1 est\xE1 em uso" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}, "onRequestPut");
+var onRequestDelete2 = /* @__PURE__ */ __name2(async (context) => {
+  try {
+    const secret = context.env.JWT_SECRET || DEFAULT_SECRET7;
+    const authUser = await getAuthUser(context.request, secret);
+    if (!authUser || authUser.role !== "admin") {
+      return new Response(JSON.stringify({ error: "Acesso negado" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    const url = new URL(context.request.url);
+    const id = url.searchParams.get("id");
+    if (!id) {
+      return new Response(JSON.stringify({ error: "ID do usu\xE1rio \xE9 obrigat\xF3rio" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    if (id === authUser.id) {
+      return new Response(JSON.stringify({ error: "Voc\xEA n\xE3o pode excluir o seu pr\xF3prio usu\xE1rio" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+    await context.env.DB.prepare("DELETE FROM users WHERE id = ?").bind(id).run();
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { "Content-Type": "application/json" }
+    });
+  } catch (error) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" }
+    });
+  }
+}, "onRequestDelete");
 var routes = [
   {
     routePath: "/api/auth/login",
@@ -744,6 +817,13 @@ var routes = [
   {
     routePath: "/api/clients",
     mountPath: "/api",
+    method: "DELETE",
+    middlewares: [],
+    modules: [onRequestDelete]
+  },
+  {
+    routePath: "/api/clients",
+    mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet2]
@@ -754,6 +834,13 @@ var routes = [
     method: "POST",
     middlewares: [],
     modules: [onRequestPost2]
+  },
+  {
+    routePath: "/api/clients",
+    mountPath: "/api",
+    method: "PUT",
+    middlewares: [],
+    modules: [onRequestPut]
   },
   {
     routePath: "/api/credentials",
@@ -786,6 +873,13 @@ var routes = [
   {
     routePath: "/api/users",
     mountPath: "/api",
+    method: "DELETE",
+    middlewares: [],
+    modules: [onRequestDelete2]
+  },
+  {
+    routePath: "/api/users",
+    mountPath: "/api",
     method: "GET",
     middlewares: [],
     modules: [onRequestGet5]
@@ -796,6 +890,13 @@ var routes = [
     method: "POST",
     middlewares: [],
     modules: [onRequestPost5]
+  },
+  {
+    routePath: "/api/users",
+    mountPath: "/api",
+    method: "PUT",
+    middlewares: [],
+    modules: [onRequestPut2]
   }
 ];
 function lexer(str) {

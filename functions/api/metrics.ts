@@ -79,17 +79,51 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       'SELECT * FROM tiktok_daily_metrics WHERE client_id = ? AND date >= ? ORDER BY date DESC'
     ).bind(targetClientId, cutoffStr);
 
-    const [metaResult, googleResult, tiktokResult] = await context.env.DB.batch([
+    const metaLastStmt = context.env.DB.prepare(
+      `SELECT COALESCE(
+        (SELECT updated_at FROM last_syncs WHERE client_id = ?1 AND platform = 'meta'),
+        (SELECT MAX(updated_at) FROM meta_daily_metrics WHERE client_id = ?1),
+        0
+      ) as max_val`
+    ).bind(targetClientId);
+
+    const googleLastStmt = context.env.DB.prepare(
+      `SELECT COALESCE(
+        (SELECT updated_at FROM last_syncs WHERE client_id = ?1 AND platform = 'google'),
+        (SELECT MAX(updated_at) FROM google_daily_metrics WHERE client_id = ?1),
+        0
+      ) as max_val`
+    ).bind(targetClientId);
+
+    const tiktokLastStmt = context.env.DB.prepare(
+      `SELECT COALESCE(
+        (SELECT updated_at FROM last_syncs WHERE client_id = ?1 AND platform = 'tiktok'),
+        (SELECT MAX(updated_at) FROM tiktok_daily_metrics WHERE client_id = ?1),
+        0
+      ) as max_val`
+    ).bind(targetClientId);
+
+    const [metaResult, googleResult, tiktokResult, metaLastRes, googleLastRes, tiktokLastRes] = await context.env.DB.batch([
       metaStmt,
       googleStmt,
-      tiktokStmt
+      tiktokStmt,
+      metaLastStmt,
+      googleLastStmt,
+      tiktokLastStmt
     ]);
+
+    const lastUpdates = {
+      meta: (metaLastRes.results?.[0] as any)?.max_val || 0,
+      google: (googleLastRes.results?.[0] as any)?.max_val || 0,
+      tiktok: (tiktokLastRes.results?.[0] as any)?.max_val || 0
+    };
 
     return new Response(
       JSON.stringify({
         meta: metaResult.results || [],
         google: googleResult.results || [],
-        tiktok: tiktokResult.results || []
+        tiktok: tiktokResult.results || [],
+        lastUpdates
       }),
       {
         headers: { 'Content-Type': 'application/json' }
