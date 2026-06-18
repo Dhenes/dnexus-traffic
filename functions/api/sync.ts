@@ -172,7 +172,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           for (let i = 0; i < adIds.length; i += chunkSize) {
             const chunk = adIds.slice(i, i + chunkSize);
             const idsQuery = chunk.join(',');
-            const detailsUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{thumbnail_url,image_url,picture}&access_token=${accessToken}`;
+            const detailsUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{id,thumbnail_url,image_url}&access_token=${accessToken}`;
             
             try {
               const detailsRes = await fetch(detailsUrl);
@@ -182,7 +182,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                   const adObj = detailsData[adId];
                   if (adObj) {
                     const previewUrl = adObj.preview_shareable_link || '';
-                    const thumbnailUrl = adObj.creative?.thumbnail_url || adObj.creative?.image_url || adObj.creative?.picture || '';
+                    const thumbnailUrl = adObj.creative?.thumbnail_url || adObj.creative?.image_url || '';
                     adDetailsMap[adId] = { previewUrl, thumbnailUrl };
                   }
                 });
@@ -208,18 +208,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const spend = parseFloat(item.spend || '0.0');
 
           const landingPageViews = getActionValue(item.actions, ['landing_page_view']);
-          const videoViews = getActionValue(item.video_play_actions, ['video_play']) || getActionValue(item.actions, ['video_play', 'video_view']);
-          const thruplays = getActionValue(item.video_thruplay_watched_actions, ['video_play']);
-          const videoP25 = getActionValue(item.video_p25_watched_actions, ['video_play']);
-          const videoP50 = getActionValue(item.video_p50_watched_actions, ['video_play']);
-          const videoP75 = getActionValue(item.video_p75_watched_actions, ['video_play']);
-          const videoP95 = getActionValue(item.video_p95_watched_actions, ['video_play']);
-          const videoP100 = getActionValue(item.video_p100_watched_actions, ['video_play']);
+          const videoViews = getActionValue(item.video_play_actions, ['video_play', 'video_view']) || getActionValue(item.actions, ['video_play', 'video_view']);
+          const thruplays = getActionValue(item.video_thruplay_watched_actions, ['video_play', 'video_view']);
+          const videoP25 = getActionValue(item.video_p25_watched_actions, ['video_play', 'video_view']);
+          const videoP50 = getActionValue(item.video_p50_watched_actions, ['video_play', 'video_view']);
+          const videoP75 = getActionValue(item.video_p75_watched_actions, ['video_play', 'video_view']);
+          const videoP95 = getActionValue(item.video_p95_watched_actions, ['video_play', 'video_view']);
+          const videoP100 = getActionValue(item.video_p100_watched_actions, ['video_play', 'video_view']);
           const likes = getActionValue(item.actions, ['post_reaction']);
           const comments = getActionValue(item.actions, ['comment']);
           const saves = getActionValue(item.actions, ['post_save', 'onsite_conversion.post_save']);
           const shares = getActionValue(item.actions, ['post_share', 'share', 'onsite_conversion.post_share']);
-          const instagramFollowers = getActionValue(item.actions, ['instagram_profile_follows']);
+          const instagramFollowers = getActionValue(item.actions, ['instagram_profile_follows', 'onsite_conversion.instagram_profile_follows']);
 
           const linkClicks = getActionValue(item.actions, ['link_click']);
           const checkoutsInitiated = getActionValue(item.actions, ['initiate_checkout']);
@@ -227,9 +227,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const newMessagingConnections = getActionValue(item.actions, ['new_thread']);
           const purchases = getActionValue(item.actions, ['purchase']);
           const purchasesConversionValue = getActionFloatValue(item.action_values, ['purchase']);
-          const videoPlays = getActionValue(item.video_play_actions, ['video_play']);
+          const videoPlays = getActionValue(item.video_play_actions, ['video_play', 'video_view']);
           const video3SecViews = getActionValue(item.actions, ['video_view']);
-          const video2SecContinuousViews = getActionValue(item.video_continuous_2_sec_watched_actions, ['video_view']);
+          const video2SecContinuousViews = getActionValue(item.video_continuous_2_sec_watched_actions, ['video_play', 'video_view']);
           const video15SecViews = thruplays;
 
           // Obter mídias do mapa auxiliar

@@ -288,6 +288,8 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'meta' | 'google' | 'tiktok' | 'settings' | 'clients'>('overview');
   const [dateRange, setDateRange] = useState<'7d' | '30d' | 'this_month'>('30d');
   const [reportType, setReportType] = useState<string>('followers');
+  const [metaSortField, setMetaSortField] = useState<string>('spend');
+  const [metaSortDirection, setMetaSortDirection] = useState<'asc' | 'desc'>('desc');
   
   // Auth State
   const [token, setToken] = useState<string | null>(localStorage.getItem('dnexus_token'));
@@ -1117,6 +1119,49 @@ export default function App() {
   const tiktokImpressions = filteredTiktok.reduce((acc, curr) => acc + curr.impressions, 0);
   const tiktokClicks = filteredTiktok.reduce((acc, curr) => acc + curr.clicks, 0);
   const tiktokConversions = filteredTiktok.reduce((acc, curr) => acc + curr.conversion, 0);
+
+  const handleMetaSort = (field: string) => {
+    if (metaSortField === field) {
+      setMetaSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setMetaSortField(field);
+      setMetaSortDirection('desc');
+    }
+  };
+
+  const renderSortIndicator = (field: string) => {
+    if (metaSortField !== field) return <span style={{ opacity: 0.3, marginLeft: '4px', fontSize: '10px' }}>↕</span>;
+    return <span style={{ color: 'var(--color-primary)', marginLeft: '4px', fontSize: '10px' }}>{metaSortDirection === 'asc' ? '▲' : '▼'}</span>;
+  };
+
+  const sortedMetaForTable = [...filteredMeta].sort((a, b) => {
+    let aVal: any = a[metaSortField as keyof MetaMetric];
+    let bVal: any = b[metaSortField as keyof MetaMetric];
+
+    if (metaSortField === 'cpf') {
+      const aCpf = a.instagram_followers && a.instagram_followers > 0 ? (a.spend || 0) / a.instagram_followers : 0;
+      const bCpf = b.instagram_followers && b.instagram_followers > 0 ? (b.spend || 0) / b.instagram_followers : 0;
+      aVal = aCpf;
+      bVal = bCpf;
+    }
+
+    if (aVal === undefined || aVal === null) {
+      aVal = typeof bVal === 'string' ? '' : 0;
+    }
+    if (bVal === undefined || bVal === null) {
+      bVal = typeof aVal === 'string' ? '' : 0;
+    }
+
+    if (typeof aVal === 'string') {
+      return metaSortDirection === 'asc'
+        ? aVal.localeCompare(bVal as string)
+        : (bVal as string).localeCompare(aVal);
+    } else {
+      return metaSortDirection === 'asc'
+        ? (aVal as number) - (bVal as number)
+        : (bVal as number) - (aVal as number);
+    }
+  });
 
   const totalSpend = metaSpend + googleSpend + tiktokSpend;
   const totalImpressions = metaImpressions + googleImpressions + tiktokImpressions;
@@ -2062,19 +2107,32 @@ export default function App() {
                         <>
                           <thead>
                             <tr>
-                              <th>Mídia</th>
-                              <th>Campanha</th>
-                              <th>Anúncio</th>
-                              <th>Valor Investido</th>
-                              <th>Alcance</th>
-                              <th>Impressões</th>
-                              <th>Reproduções de Vídeo</th>
-                              <th>Seguidores</th>
-                              <th>Custo Por Seguidor</th>
+                              <th style={{ userSelect: 'none' }}>Mídia</th>
+                              <th onClick={() => handleMetaSort('ad_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Anúncio {renderSortIndicator('ad_name')}
+                              </th>
+                              <th onClick={() => handleMetaSort('spend')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Valor Investido {renderSortIndicator('spend')}
+                              </th>
+                              <th onClick={() => handleMetaSort('reach')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Alcance {renderSortIndicator('reach')}
+                              </th>
+                              <th onClick={() => handleMetaSort('impressions')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Impressões {renderSortIndicator('impressions')}
+                              </th>
+                              <th onClick={() => handleMetaSort('video_plays')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Reproduções de Vídeo {renderSortIndicator('video_plays')}
+                              </th>
+                              <th onClick={() => handleMetaSort('instagram_followers')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Seguidores {renderSortIndicator('instagram_followers')}
+                              </th>
+                              <th onClick={() => handleMetaSort('cpf')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Custo Por Seguidor {renderSortIndicator('cpf')}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredMeta.slice(0, 15).map((m, idx) => {
+                            {sortedMetaForTable.slice(0, 15).map((m, idx) => {
                               const cpf = m.instagram_followers && m.instagram_followers > 0 ? (m.spend || 0) / m.instagram_followers : 0;
                               return (
                                 <tr key={idx}>
@@ -2102,7 +2160,6 @@ export default function App() {
                                       )}
                                     </div>
                                   </td>
-                                  <td>{m.campaign_name || '-'}</td>
                                   <td style={{ fontWeight: 600 }}>{m.ad_name || '-'}</td>
                                   <td>R$ {(m.spend || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                                   <td>{(m.reach || 0).toLocaleString('pt-BR')}</td>
@@ -2121,7 +2178,7 @@ export default function App() {
                           </tbody>
                           <tfoot style={{ fontWeight: 'bold', borderTop: '2px solid var(--border-color)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
                             <tr>
-                              <td colSpan={3}>Resumo Total / Média</td>
+                              <td colSpan={2}>Resumo Total / Média</td>
                               <td>R$ {metaSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
                               <td>{metaReach.toLocaleString('pt-BR')}</td>
                               <td>{metaImpressions.toLocaleString('pt-BR')}</td>
@@ -2140,28 +2197,64 @@ export default function App() {
                         <>
                           <thead>
                             <tr>
-                              <th>ID do Anúncio</th>
-                              <th>Nome do Anúncio</th>
-                              <th>Conjunto de Anúncios</th>
-                              <th>Campanha</th>
-                              <th>Alcance (Reach)</th>
-                              <th>Impressões</th>
-                              <th>Cliques no Link</th>
-                              <th>Valor Gasto</th>
-                              <th>Checkouts Iniciados</th>
-                              <th>Leads</th>
-                              <th>Compras</th>
-                              <th>Valor de Compras</th>
-                              <th>Novas Conversas</th>
-                              <th>Reproduções de Vídeo</th>
-                              <th>Visualizações 3s</th>
-                              <th>Visualizações 2s Cont.</th>
-                              <th>Visualizações 15s</th>
-                              <th>ThruPlays</th>
+                              <th onClick={() => handleMetaSort('ad_id')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                ID do Anúncio {renderSortIndicator('ad_id')}
+                              </th>
+                              <th onClick={() => handleMetaSort('ad_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Nome do Anúncio {renderSortIndicator('ad_name')}
+                              </th>
+                              <th onClick={() => handleMetaSort('adset_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Conjunto de Anúncios {renderSortIndicator('adset_name')}
+                              </th>
+                              <th onClick={() => handleMetaSort('campaign_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Campanha {renderSortIndicator('campaign_name')}
+                              </th>
+                              <th onClick={() => handleMetaSort('reach')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Alcance (Reach) {renderSortIndicator('reach')}
+                              </th>
+                              <th onClick={() => handleMetaSort('impressions')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Impressões {renderSortIndicator('impressions')}
+                              </th>
+                              <th onClick={() => handleMetaSort('link_clicks')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Cliques no Link {renderSortIndicator('link_clicks')}
+                              </th>
+                              <th onClick={() => handleMetaSort('spend')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Valor Gasto {renderSortIndicator('spend')}
+                              </th>
+                              <th onClick={() => handleMetaSort('checkouts_initiated')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Checkouts Iniciados {renderSortIndicator('checkouts_initiated')}
+                              </th>
+                              <th onClick={() => handleMetaSort('leads')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Leads {renderSortIndicator('leads')}
+                              </th>
+                              <th onClick={() => handleMetaSort('purchases')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Compras {renderSortIndicator('purchases')}
+                              </th>
+                              <th onClick={() => handleMetaSort('purchases_conversion_value')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Valor de Compras {renderSortIndicator('purchases_conversion_value')}
+                              </th>
+                              <th onClick={() => handleMetaSort('new_messaging_connections')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Novas Conversas {renderSortIndicator('new_messaging_connections')}
+                              </th>
+                              <th onClick={() => handleMetaSort('video_plays')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Reproduções de Vídeo {renderSortIndicator('video_plays')}
+                              </th>
+                              <th onClick={() => handleMetaSort('video_3_sec_views')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Visualizações 3s {renderSortIndicator('video_3_sec_views')}
+                              </th>
+                              <th onClick={() => handleMetaSort('video_2_sec_continuous_views')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Visualizações 2s Cont. {renderSortIndicator('video_2_sec_continuous_views')}
+                              </th>
+                              <th onClick={() => handleMetaSort('video_15_sec_views')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Visualizações 15s {renderSortIndicator('video_15_sec_views')}
+                              </th>
+                              <th onClick={() => handleMetaSort('thruplays')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                ThruPlays {renderSortIndicator('thruplays')}
+                              </th>
                             </tr>
                           </thead>
                           <tbody>
-                            {filteredMeta.slice(0, 15).map((m, idx) => {
+                            {sortedMetaForTable.slice(0, 15).map((m, idx) => {
                               return (
                                 <tr key={idx}>
                                   <td>{m.ad_id || '-'}</td>
