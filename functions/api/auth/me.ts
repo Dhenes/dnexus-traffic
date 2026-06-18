@@ -19,12 +19,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       });
     }
 
-    // Buscar informações atualizadas do usuário e cliente no D1
+    // Buscar informações atualizadas do usuário no D1
     const userRow: any = await context.env.DB.prepare(`
-      SELECT u.id, u.email, u.role, u.client_id, c.name as client_name
-      FROM users u
-      LEFT JOIN clients c ON u.client_id = c.id
-      WHERE u.id = ?
+      SELECT id, email, role
+      FROM users
+      WHERE id = ?
     `).bind(authUser.userId).first();
 
     if (!userRow) {
@@ -34,13 +33,32 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       });
     }
 
+    // Consultar as empresas (clients) que este usuário possui acesso
+    let userClients: any[] = [];
+    if (userRow.role === 'admin') {
+      const allClients = await context.env.DB.prepare(
+        'SELECT id, name FROM clients ORDER BY name ASC'
+      ).all();
+      userClients = allClients.results || [];
+    } else {
+      const dbClients = await context.env.DB.prepare(`
+        SELECT c.id, c.name 
+        FROM user_clients uc 
+        JOIN clients c ON uc.client_id = c.id 
+        WHERE uc.user_id = ?
+        ORDER BY c.name ASC
+      `).bind(userRow.id).all();
+      userClients = dbClients.results || [];
+    }
+
     return new Response(JSON.stringify({
       user: {
         id: userRow.id,
         email: userRow.email,
         role: userRow.role,
-        clientId: userRow.client_id || '',
-        clientName: userRow.client_name || ''
+        clients: userClients,
+        clientId: userClients[0]?.id || '',
+        clientName: userClients[0]?.name || ''
       }
     }), {
       headers: { 'Content-Type': 'application/json' }

@@ -22,9 +22,24 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const url = new URL(context.request.url);
     let targetClientId = url.searchParams.get('clientId');
 
-    // Clientes comuns só podem ver suas próprias credenciais
+    // Clientes comuns só podem ver suas próprias credenciais (ou das empresas que têm acesso)
     if (authUser.role !== 'admin') {
-      targetClientId = authUser.clientId;
+      if (!targetClientId) {
+        return new Response(JSON.stringify({ error: 'clientId é obrigatório' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      const hasAccess = await context.env.DB.prepare(
+        'SELECT 1 FROM user_clients WHERE user_id = ? AND client_id = ?'
+      ).bind(authUser.userId, targetClientId).first();
+      
+      if (!hasAccess) {
+        return new Response(JSON.stringify({ error: 'Acesso negado a esta empresa' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     if (!targetClientId) {

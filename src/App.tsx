@@ -104,6 +104,7 @@ interface AuthUser {
   role: 'admin' | 'client';
   clientId: string;
   clientName: string;
+  clients?: Client[];
 }
 
 interface Client {
@@ -118,6 +119,8 @@ interface UserListItem {
   role: string;
   client_id: string;
   client_name?: string;
+  clientIds?: string[];
+  clientNames?: string[];
   created_at: number;
 }
 
@@ -237,6 +240,7 @@ export default function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'client'>('client');
   const [newUserClientId, setNewUserClientId] = useState('');
+  const [newUserClientIds, setNewUserClientIds] = useState<string[]>([]);
 
   // Editing states
   const [editingClientId, setEditingClientId] = useState<string | null>(null);
@@ -245,6 +249,7 @@ export default function App() {
   const [editingUserEmail, setEditingUserEmail] = useState<string>('');
   const [editingUserRole, setEditingUserRole] = useState<'admin' | 'client'>('client');
   const [editingUserClientId, setEditingUserClientId] = useState<string>('');
+  const [editingUserClientIds, setEditingUserClientIds] = useState<string[]>([]);
   const [editingUserPassword, setEditingUserPassword] = useState<string>('');
 
   const [isSandbox, setIsSandbox] = useState(true);
@@ -290,6 +295,9 @@ export default function App() {
           if (meRes.ok) {
             const data = await meRes.json();
             setCurrentUser(data.user);
+            if (data.user.role === 'client') {
+              setSelectedClientId(data.user.clientId || (data.user.clients && data.user.clients[0]?.id) || '');
+            }
             setIsSandbox(false);
             showToast(`Sessão restaurada para: ${data.user.email}`, 'success');
           } else {
@@ -348,8 +356,13 @@ export default function App() {
             email: loginEmail,
             role: 'client',
             clientId: 'c_alfa',
-            clientName: 'Cliente Alfa (Varejo)'
+            clientName: 'Cliente Alfa (Varejo)',
+            clients: [
+              { id: 'c_alfa', name: 'Cliente Alfa (Varejo)', created_at: Date.now() },
+              { id: 'c_beta', name: 'Cliente Beta (SaaS)', created_at: Date.now() }
+            ]
           };
+          setSelectedClientId('c_alfa');
         }
 
         setCurrentUser(mockUser);
@@ -371,6 +384,9 @@ export default function App() {
           setToken(data.token);
           localStorage.setItem('dnexus_token', data.token);
           setCurrentUser(data.user);
+          if (data.user.role === 'client') {
+            setSelectedClientId(data.user.clientId || (data.user.clients && data.user.clients[0]?.id) || '');
+          }
           showToast('Login efetuado com sucesso!', 'success');
         } else {
           const data = await res.json();
@@ -428,7 +444,7 @@ export default function App() {
   const loadData = async () => {
     if (!currentUser) return;
 
-    const targetId = currentUser.role === 'admin' ? selectedClientId : currentUser.clientId;
+    const targetId = selectedClientId || currentUser.clientId;
     if (!targetId) {
       setDbData({ meta: [], google: [], tiktok: [] });
       return;
@@ -481,7 +497,7 @@ export default function App() {
   // Sync metrics
   const handleSync = async () => {
     if (!currentUser) return;
-    const targetId = currentUser.role === 'admin' ? selectedClientId : currentUser.clientId;
+    const targetId = selectedClientId || currentUser.clientId;
     
     if (!targetId) {
       showToast('Selecione um cliente para sincronizar', 'error');
@@ -617,23 +633,29 @@ export default function App() {
       return;
     }
 
-    if (newUserRole === 'client' && !newUserClientId) {
-      showToast('Selecione uma empresa para o cliente', 'error');
+    if (newUserRole === 'client' && newUserClientIds.length === 0) {
+      showToast('Selecione pelo menos uma empresa para o cliente', 'error');
       return;
     }
 
     if (isSandbox) {
+      const firstId = newUserClientIds[0] || '';
+      const firstClientName = clients.find(c => c.id === firstId)?.name || '';
+      const clientNames = newUserClientIds.map(id => clients.find(c => c.id === id)?.name || '');
       const newU: UserListItem = {
         id: 'u_' + Math.random().toString(36).substring(2, 6),
         email: newUserEmail,
         role: newUserRole,
-        client_id: newUserRole === 'admin' ? '' : newUserClientId,
-        client_name: clients.find(c => c.id === newUserClientId)?.name || '',
+        client_id: newUserRole === 'admin' ? '' : firstId,
+        client_name: newUserRole === 'admin' ? '' : firstClientName,
+        clientIds: newUserRole === 'admin' ? [] : newUserClientIds,
+        clientNames: newUserRole === 'admin' ? [] : clientNames,
         created_at: Date.now()
       };
       setUsersList([newU, ...usersList]);
       setNewUserEmail('');
       setNewUserPassword('');
+      setNewUserClientIds([]);
       showToast('Usuário criado no Sandbox!', 'success');
     } else {
       try {
@@ -644,16 +666,22 @@ export default function App() {
             email: newUserEmail,
             password: newUserPassword,
             role: newUserRole,
-            clientId: newUserClientId
+            clientIds: newUserClientIds,
+            clientId: newUserClientIds[0] || ''
           })
         });
         if (res.ok) {
           const data = await res.json();
-          // Map client name locally for instantly displaying in the table
-          const clientName = clients.find(c => c.id === newUserClientId)?.name || '';
-          setUsersList([{ ...data.user, client_name: clientName }, ...usersList]);
+          const clientNames = newUserClientIds.map(id => clients.find(c => c.id === id)?.name || '');
+          setUsersList([{
+            ...data.user,
+            client_name: clientNames[0] || '',
+            clientIds: newUserClientIds,
+            clientNames: clientNames
+          }, ...usersList]);
           setNewUserEmail('');
           setNewUserPassword('');
+          setNewUserClientIds([]);
           showToast('Usuário criado com sucesso!', 'success');
         } else {
           const data = await res.json();
@@ -783,23 +811,28 @@ export default function App() {
       return;
     }
 
-    if (editingUserRole === 'client' && !editingUserClientId) {
-      showToast('Selecione uma empresa para o cliente', 'error');
+    if (editingUserRole === 'client' && editingUserClientIds.length === 0) {
+      showToast('Selecione pelo menos uma empresa para o cliente', 'error');
       return;
     }
 
     if (isSandbox) {
-      const clientName = clients.find(c => c.id === editingUserClientId)?.name || '';
+      const firstId = editingUserClientIds[0] || '';
+      const clientName = clients.find(c => c.id === firstId)?.name || '';
+      const clientNames = editingUserClientIds.map(id => clients.find(c => c.id === id)?.name || '');
       setUsersList(usersList.map(u => u.id === editingUserId ? {
         ...u,
         email: editingUserEmail,
         role: editingUserRole,
-        client_id: editingUserRole === 'admin' ? '' : editingUserClientId,
-        client_name: editingUserRole === 'admin' ? '' : clientName
+        client_id: editingUserRole === 'admin' ? '' : firstId,
+        client_name: editingUserRole === 'admin' ? '' : clientName,
+        clientIds: editingUserRole === 'admin' ? [] : editingUserClientIds,
+        clientNames: editingUserRole === 'admin' ? [] : clientNames
       } : u));
       setEditingUserId(null);
       setEditingUserEmail('');
       setEditingUserPassword('');
+      setEditingUserClientIds([]);
       showToast('Usuário atualizado no Sandbox!', 'success');
     } else {
       try {
@@ -812,21 +845,27 @@ export default function App() {
             email: editingUserEmail,
             password: editingUserPassword,
             role: editingUserRole,
-            clientId: editingUserRole === 'admin' ? '' : editingUserClientId
+            clientIds: editingUserClientIds,
+            clientId: editingUserClientIds[0] || ''
           })
         });
         if (res.ok) {
-          const clientName = clients.find(c => c.id === editingUserClientId)?.name || '';
+          const firstId = editingUserClientIds[0] || '';
+          const clientName = clients.find(c => c.id === firstId)?.name || '';
+          const clientNames = editingUserClientIds.map(id => clients.find(c => c.id === id)?.name || '');
           setUsersList(usersList.map(u => u.id === editingUserId ? {
             ...u,
             email: editingUserEmail,
             role: editingUserRole,
-            client_id: editingUserRole === 'admin' ? '' : editingUserClientId,
-            client_name: editingUserRole === 'admin' ? '' : clientName
+            client_id: editingUserRole === 'admin' ? '' : firstId,
+            client_name: editingUserRole === 'admin' ? '' : clientName,
+            clientIds: editingUserRole === 'admin' ? [] : editingUserClientIds,
+            clientNames: editingUserRole === 'admin' ? [] : clientNames
           } : u));
           setEditingUserId(null);
           setEditingUserEmail('');
           setEditingUserPassword('');
+          setEditingUserClientIds([]);
           showToast('Usuário atualizado com sucesso!', 'success');
         } else {
           const data = await res.json();
@@ -1101,12 +1140,6 @@ export default function App() {
               {loading ? 'Entrando...' : 'Entrar no Painel'}
             </button>
           </form>
-
-
-          
-          <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: 'var(--text-muted)' }}>
-            Modo: {isSandbox ? 'Sandbox Local (Sem Backend)' : 'Conectado ao Cloudflare D1'}
-          </div>
         </div>
       </div>
     );
@@ -1211,20 +1244,6 @@ export default function App() {
             <span>Sair do Painel</span>
           </button>
         </div>
-
-        <div className="sidebar-footer">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <span style={{
-              width: '8px',
-              height: '8px',
-              borderRadius: '50%',
-              backgroundColor: isSandbox ? 'var(--color-warning)' : 'var(--color-success)',
-              display: 'inline-block'
-            }}></span>
-            <span>{isSandbox ? 'Sandbox (Mock)' : 'D1 Conectado'}</span>
-          </div>
-          <span>v1.1.0 &copy; Dnexus MIB</span>
-        </div>
       </aside>
 
       {/* Main Container */}
@@ -1257,11 +1276,11 @@ export default function App() {
           <div className="header-controls">
             {loading && <span style={{ color: 'var(--text-secondary)', fontSize: '13px', marginRight: '8px' }}>Carregando...</span>}
             
-            {/* Multi-client selector for Admin */}
-            {currentUser.role === 'admin' && activeTab !== 'clients' && (
+            {/* Multi-client selector */}
+            {((currentUser.role === 'admin') || (currentUser.role === 'client' && currentUser.clients && currentUser.clients.length > 1)) && activeTab !== 'clients' && (
               <select className="date-selector" style={{ border: '1px solid var(--color-primary)' }} value={selectedClientId} onChange={(e) => setSelectedClientId(e.target.value)}>
-                <option value="" disabled>Selecione um Cliente</option>
-                {clients.map(c => (
+                {currentUser.role === 'admin' && <option value="" disabled>Selecione um Cliente</option>}
+                {(currentUser.role === 'admin' ? clients : (currentUser.clients || [])).map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
@@ -2176,14 +2195,51 @@ export default function App() {
                         <option value="admin">Administrador Master (Total)</option>
                       </select>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">Empresa Vinculada (Necessário para Cliente)</label>
-                      <select className="date-selector" style={{ width: '100%' }} disabled={(editingUserId ? editingUserRole : newUserRole) === 'admin'} value={editingUserId ? editingUserClientId : newUserClientId} onChange={(e) => editingUserId ? setEditingUserClientId(e.target.value) : setNewUserClientId(e.target.value)}>
-                        <option value="">Selecione a Empresa...</option>
-                        {clients.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
+                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                      <label className="form-label">Empresas Vinculadas (Selecione uma ou mais para Cliente)</label>
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px',
+                        maxHeight: '150px',
+                        overflowY: 'auto',
+                        border: '1px solid var(--border-color)',
+                        padding: '12px',
+                        borderRadius: '8px',
+                        opacity: ((editingUserId ? editingUserRole : newUserRole) === 'admin') ? 0.5 : 1,
+                        pointerEvents: ((editingUserId ? editingUserRole : newUserRole) === 'admin') ? 'none' : 'auto',
+                        backgroundColor: 'rgba(255,255,255,0.02)'
+                      }}>
+                        {clients.map(c => {
+                          const isChecked = editingUserId 
+                            ? editingUserClientIds.includes(c.id) 
+                            : newUserClientIds.includes(c.id);
+                          return (
+                            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  if (editingUserId) {
+                                    if (e.target.checked) {
+                                      setEditingUserClientIds([...editingUserClientIds, c.id]);
+                                    } else {
+                                      setEditingUserClientIds(editingUserClientIds.filter(id => id !== c.id));
+                                    }
+                                  } else {
+                                    if (e.target.checked) {
+                                      setNewUserClientIds([...newUserClientIds, c.id]);
+                                    } else {
+                                      setNewUserClientIds(newUserClientIds.filter(id => id !== c.id));
+                                    }
+                                  }
+                                }}
+                              />
+                              <span>{c.name}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
                     </div>
                     
                     <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', marginTop: '4px' }}>
@@ -2225,7 +2281,7 @@ export default function App() {
                               )}
                             </td>
                             <td style={{ color: u.role === 'admin' ? 'var(--text-muted)' : 'var(--text-primary)' }}>
-                              {u.role === 'admin' ? 'Acesso Total' : (u.client_name || 'Desconhecida')}
+                              {u.role === 'admin' ? 'Acesso Total' : (u.clientNames && u.clientNames.length > 0 ? u.clientNames.join(', ') : (u.client_name || 'Desconhecida'))}
                             </td>
                             <td style={{ color: 'var(--text-muted)' }}>
                               {new Date(u.created_at).toLocaleDateString('pt-BR')}
@@ -2237,6 +2293,7 @@ export default function App() {
                                   setEditingUserEmail(u.email);
                                   setEditingUserRole(u.role as any);
                                   setEditingUserClientId(u.client_id || '');
+                                  setEditingUserClientIds(u.clientIds || (u.client_id ? [u.client_id] : []));
                                   setEditingUserPassword('');
                                 }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center' }} title="Editar">
                                   <Edit2 size={14} />

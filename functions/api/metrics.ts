@@ -23,9 +23,24 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const range = url.searchParams.get('range') || '30d';
     let targetClientId = url.searchParams.get('clientId');
 
-    // Se for cliente comum, força o clientId dele próprio
+    // Se for cliente comum, verifica se ele tem acesso a este cliente
     if (authUser.role !== 'admin') {
-      targetClientId = authUser.clientId;
+      if (!targetClientId) {
+        return new Response(JSON.stringify({ error: 'Nenhum cliente selecionado' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      const hasAccess = await context.env.DB.prepare(
+        'SELECT 1 FROM user_clients WHERE user_id = ? AND client_id = ?'
+      ).bind(authUser.userId, targetClientId).first();
+      
+      if (!hasAccess) {
+        return new Response(JSON.stringify({ error: 'Acesso negado a esta empresa' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     // Se admin não selecionou nenhum cliente, retorna arrays vazios

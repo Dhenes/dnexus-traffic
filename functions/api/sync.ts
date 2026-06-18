@@ -7,6 +7,20 @@ interface Env {
 
 const DEFAULT_SECRET = 'dnexus_super_secret_key_2026';
 
+const getActionValue = (actions: any[] | undefined, types: string[]): number => {
+  if (!actions || !Array.isArray(actions)) return 0;
+  return actions
+    .filter(act => types.includes(act.action_type))
+    .reduce((sum, act) => sum + parseInt(act.value || '0', 10), 0);
+};
+
+const getActionFloatValue = (actions: any[] | undefined, types: string[]): number => {
+  if (!actions || !Array.isArray(actions)) return 0.0;
+  return actions
+    .filter(act => types.includes(act.action_type))
+    .reduce((sum, act) => sum + parseFloat(act.value || '0.0'), 0.0);
+};
+
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const secret = context.env.JWT_SECRET || DEFAULT_SECRET;
@@ -23,7 +37,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let targetClientId = url.searchParams.get('clientId');
 
     if (authUser.role !== 'admin') {
-      targetClientId = authUser.clientId;
+      if (!targetClientId) {
+        return new Response(JSON.stringify({ error: 'Nenhum cliente selecionado para sincronização' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
+      const hasAccess = await context.env.DB.prepare(
+        'SELECT 1 FROM user_clients WHERE user_id = ? AND client_id = ?'
+      ).bind(authUser.userId, targetClientId).first();
+      
+      if (!hasAccess) {
+        return new Response(JSON.stringify({ error: 'Acesso negado a esta empresa' }), {
+          status: 403,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      }
     }
 
     if (!targetClientId) {
@@ -68,7 +97,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       
       // Chamada à API Graph do Meta Ads (Insights de Campanha, agrupados diariamente nos últimos 30 dias)
       const metaApiUrl = `https://graph.facebook.com/v19.0/${actId}/insights` +
-        `?fields=campaign_id,campaign_name,reach,impressions,clicks,spend,actions` +
+        `?fields=campaign_id,campaign_name,reach,impressions,clicks,spend,actions,` +
+        `video_play_actions,video_avg_time_watched_actions,video_thruplay_watched_actions,` +
+        `video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,` +
+        `video_p95_watched_actions,video_p100_watched_actions` +
         `&level=campaign` +
         `&time_increment=1` +
         `&date_preset=last_30d` +
@@ -109,12 +141,38 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           }
         }
 
+        // Métricas extras solicitadas
+        const landingPageViews = getActionValue(item.actions, ['landing_page_view']);
+        const videoViews = getActionValue(item.video_play_actions, ['video_play']) || getActionValue(item.actions, ['video_play', 'video_view']);
+        const videoPlayTime = getActionFloatValue(item.video_avg_time_watched_actions, ['video_play']);
+        const thruplays = getActionValue(item.video_thruplay_watched_actions, ['video_play']);
+        const videoP25 = getActionValue(item.video_p25_watched_actions, ['video_play']);
+        const videoP50 = getActionValue(item.video_p50_watched_actions, ['video_play']);
+        const videoP75 = getActionValue(item.video_p75_watched_actions, ['video_play']);
+        const videoP95 = getActionValue(item.video_p95_watched_actions, ['video_play']);
+        const videoP100 = getActionValue(item.video_p100_watched_actions, ['video_play']);
+        const likes = getActionValue(item.actions, ['post_reaction']);
+        const comments = getActionValue(item.actions, ['comment']);
+        const saves = getActionValue(item.actions, ['post_save', 'onsite_conversion.post_save']);
+        const shares = getActionValue(item.actions, ['post_share', 'share', 'onsite_conversion.post_share']);
+        const instagramFollowers = getActionValue(item.actions, ['instagram_profile_follows']);
+
         const id = `${targetClientId}_meta_${campaignId}_${dateStr}`;
         
         batchStatements.push(
           context.env.DB.prepare(`
-            INSERT INTO meta_daily_metrics (id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            INSERT INTO meta_daily_metrics (
+              id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, 
+              landing_page_views, video_views, video_play_time, thruplays, 
+              video_p25_views, video_p50_views, video_p75_views, video_p95_views, video_p100_views, 
+              likes, comments, saves, shares, instagram_followers, updated_at
+            )
+            VALUES (
+              ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 
+              ?11, ?12, ?13, ?14, 
+              ?15, ?16, ?17, ?18, ?19, 
+              ?20, ?21, ?22, ?23, ?24, ?25
+            )
             ON CONFLICT(id) DO UPDATE SET
               campaign_name = ?5,
               reach = ?6,
@@ -122,8 +180,27 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
               clicks = ?8,
               spend = ?9,
               conversions_actions = ?10,
-              updated_at = ?11
-          `).bind(id, targetClientId, dateStr, campaignId, campaignName, reach, impressions, clicks, spend, conversions, timestamp)
+              landing_page_views = ?11,
+              video_views = ?12,
+              video_play_time = ?13,
+              thruplays = ?14,
+              video_p25_views = ?15,
+              video_p50_views = ?16,
+              video_p75_views = ?17,
+              video_p95_views = ?18,
+              video_p100_views = ?19,
+              likes = ?20,
+              comments = ?21,
+              saves = ?22,
+              shares = ?23,
+              instagram_followers = ?24,
+              updated_at = ?25
+          `).bind(
+            id, targetClientId, dateStr, campaignId, campaignName, reach, impressions, clicks, spend, conversions,
+            landingPageViews, videoViews, videoPlayTime, thruplays,
+            videoP25, videoP50, videoP75, videoP95, videoP100,
+            likes, comments, saves, shares, instagramFollowers, timestamp
+          )
         );
       });
 

@@ -20,13 +20,32 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     }
 
     const { results } = await context.env.DB.prepare(`
-      SELECT u.id, u.email, u.role, u.client_id, u.created_at, c.name as client_name
+      SELECT u.id, u.email, u.role, u.created_at,
+             group_concat(uc.client_id) as client_ids,
+             group_concat(c.name) as client_names
       FROM users u
-      LEFT JOIN clients c ON u.client_id = c.id
+      LEFT JOIN user_clients uc ON u.id = uc.user_id
+      LEFT JOIN clients c ON uc.client_id = c.id
+      GROUP BY u.id
       ORDER BY u.created_at DESC
     `).all();
 
-    return new Response(JSON.stringify(results), {
+    const mappedResults = (results || []).map((u: any) => {
+      const clientIds = u.client_ids ? u.client_ids.split(',') : [];
+      const clientNames = u.client_names ? u.client_names.split(',') : [];
+      return {
+        id: u.id,
+        email: u.email,
+        role: u.role,
+        created_at: u.created_at,
+        clientIds,
+        clientNames,
+        client_id: clientIds[0] || '',
+        client_name: clientNames[0] || ''
+      };
+    });
+
+    return new Response(JSON.stringify(mappedResults), {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (error: any) {
@@ -50,7 +69,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const body: any = await context.request.json();
-    const { email, password, role, clientId } = body;
+    const { email, password, role, clientId, clientIds } = body;
 
     if (!email || !password || !role) {
       return new Response(JSON.stringify({ error: 'E-mail, senha e nível de acesso são obrigatórios' }), {
@@ -59,8 +78,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       });
     }
 
-    if (role === 'client' && !clientId) {
-      return new Response(JSON.stringify({ error: 'Clientes precisam estar associados a uma empresa' }), {
+    const selectedClientIds: string[] = Array.isArray(clientIds)
+      ? clientIds
+      : (clientId ? [clientId] : []);
+
+    if (role === 'client' && selectedClientIds.length === 0) {
+      return new Response(JSON.stringify({ error: 'Clientes precisam estar associados a pelo menos uma empresa' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -70,21 +93,41 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const userId = 'u_' + Math.random().toString(36).substring(2, 8);
     const createdAt = Date.now();
 
-    await context.env.DB.prepare(`
-      INSERT INTO users (id, email, password_hash, role, client_id, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).bind(
-      userId,
-      email.toLowerCase().trim(),
-      passwordHash,
-      role,
-      role === 'admin' ? null : clientId,
-      createdAt
-    ).run();
+    const batchStatements: D1PreparedStatement[] = [
+      context.env.DB.prepare(`
+        INSERT INTO users (id, email, password_hash, role, client_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).bind(
+        userId,
+        email.toLowerCase().trim(),
+        passwordHash,
+        role,
+        role === 'admin' ? null : (selectedClientIds[0] || null),
+        createdAt
+      )
+    ];
+
+    if (role !== 'admin') {
+      for (const cId of selectedClientIds) {
+        batchStatements.push(
+          context.env.DB.prepare('INSERT INTO user_clients (user_id, client_id) VALUES (?, ?)')
+            .bind(userId, cId)
+        );
+      }
+    }
+
+    await context.env.DB.batch(batchStatements);
 
     return new Response(JSON.stringify({
       success: true,
-      user: { id: userId, email, role, clientId, created_at: createdAt }
+      user: {
+        id: userId,
+        email,
+        role,
+        clientIds: selectedClientIds,
+        clientId: selectedClientIds[0] || '',
+        created_at: createdAt
+      }
     }), {
       headers: { 'Content-Type': 'application/json' }
     });
@@ -117,7 +160,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     }
 
     const body: any = await context.request.json();
-    const { id, email, password, role, clientId } = body;
+    const { id, email, password, role, clientId, clientIds } = body;
 
     if (!id || !email || !role) {
       return new Response(JSON.stringify({ error: 'ID, e-mail e nível de acesso são obrigatórios' }), {
@@ -126,8 +169,12 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       });
     }
 
-    if (role === 'client' && !clientId) {
-      return new Response(JSON.stringify({ error: 'Clientes precisam estar associados a uma empresa' }), {
+    const selectedClientIds: string[] = Array.isArray(clientIds)
+      ? clientIds
+      : (clientId ? [clientId] : []);
+
+    if (role === 'client' && selectedClientIds.length === 0) {
+      return new Response(JSON.stringify({ error: 'Clientes precisam estar associados a pelo menos uma empresa' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -135,17 +182,32 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
 
     let query = '';
     let params: any[] = [];
+    const firstClientId = selectedClientIds[0] || null;
 
     if (password && password.trim().length > 0) {
       const passwordHash = await hashPassword(password);
       query = 'UPDATE users SET email = ?, password_hash = ?, role = ?, client_id = ? WHERE id = ?';
-      params = [email.toLowerCase().trim(), passwordHash, role, role === 'admin' ? null : clientId, id];
+      params = [email.toLowerCase().trim(), passwordHash, role, role === 'admin' ? null : firstClientId, id];
     } else {
       query = 'UPDATE users SET email = ?, role = ?, client_id = ? WHERE id = ?';
-      params = [email.toLowerCase().trim(), role, role === 'admin' ? null : clientId, id];
+      params = [email.toLowerCase().trim(), role, role === 'admin' ? null : firstClientId, id];
     }
 
-    await context.env.DB.prepare(query).bind(...params).run();
+    const batchStatements: D1PreparedStatement[] = [
+      context.env.DB.prepare(query).bind(...params),
+      context.env.DB.prepare('DELETE FROM user_clients WHERE user_id = ?').bind(id)
+    ];
+
+    if (role !== 'admin') {
+      for (const cId of selectedClientIds) {
+        batchStatements.push(
+          context.env.DB.prepare('INSERT INTO user_clients (user_id, client_id) VALUES (?, ?)')
+            .bind(id, cId)
+        );
+      }
+    }
+
+    await context.env.DB.batch(batchStatements);
 
     return new Response(JSON.stringify({ success: true }), {
       headers: { 'Content-Type': 'application/json' }
