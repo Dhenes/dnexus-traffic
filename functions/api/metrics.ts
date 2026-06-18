@@ -51,33 +51,45 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       );
     }
 
-    const today = new Date();
-    let cutoffDate = new Date();
+    const startDateParam = url.searchParams.get('startDate');
+    const endDateParam = url.searchParams.get('endDate');
 
-    if (range === '7d') {
-      cutoffDate.setDate(today.getDate() - 7);
-    } else if (range === '30d') {
-      cutoffDate.setDate(today.getDate() - 30);
-    } else if (range === 'this_month') {
-      cutoffDate.setDate(1);
+    let cutoffStr = '';
+    let endStr = '';
+
+    if (startDateParam && endDateParam) {
+      cutoffStr = startDateParam;
+      endStr = endDateParam;
     } else {
-      cutoffDate.setDate(today.getDate() - 30);
+      const today = new Date();
+      let cutoffDate = new Date();
+
+      if (range === '7d') {
+        cutoffDate.setDate(today.getDate() - 7);
+      } else if (range === '30d') {
+        cutoffDate.setDate(today.getDate() - 30);
+      } else if (range === 'this_month') {
+        cutoffDate.setDate(1);
+      } else {
+        cutoffDate.setDate(today.getDate() - 30);
+      }
+
+      cutoffStr = cutoffDate.toISOString().split('T')[0];
+      endStr = today.toISOString().split('T')[0];
     }
 
-    const cutoffStr = cutoffDate.toISOString().split('T')[0];
-
-    // Prepare queries filtrando estritamente por client_id
+    // Prepare queries filtrando por client_id e data de início/fim
     const metaStmt = context.env.DB.prepare(
-      'SELECT * FROM meta_daily_metrics WHERE client_id = ? AND date >= ? ORDER BY date DESC'
-    ).bind(targetClientId, cutoffStr);
+      'SELECT * FROM meta_daily_metrics WHERE client_id = ? AND date >= ? AND date <= ? ORDER BY date DESC'
+    ).bind(targetClientId, cutoffStr, endStr);
 
     const googleStmt = context.env.DB.prepare(
-      'SELECT * FROM google_daily_metrics WHERE client_id = ? AND date >= ? ORDER BY date DESC'
-    ).bind(targetClientId, cutoffStr);
+      'SELECT * FROM google_daily_metrics WHERE client_id = ? AND date >= ? AND date <= ? ORDER BY date DESC'
+    ).bind(targetClientId, cutoffStr, endStr);
 
     const tiktokStmt = context.env.DB.prepare(
-      'SELECT * FROM tiktok_daily_metrics WHERE client_id = ? AND date >= ? ORDER BY date DESC'
-    ).bind(targetClientId, cutoffStr);
+      'SELECT * FROM tiktok_daily_metrics WHERE client_id = ? AND date >= ? AND date <= ? ORDER BY date DESC'
+    ).bind(targetClientId, cutoffStr, endStr);
 
     const metaLastStmt = context.env.DB.prepare(
       `SELECT COALESCE(

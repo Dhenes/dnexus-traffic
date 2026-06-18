@@ -99,7 +99,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const batchStatements: D1PreparedStatement[] = [
       context.env.DB.prepare(`
         INSERT INTO users (id, email, username, password_hash, role, client_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `).bind(
         userId,
         email.toLowerCase().trim(),

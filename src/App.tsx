@@ -289,7 +289,16 @@ const generateMockData = (clientId: string) => {
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'meta' | 'google' | 'tiktok' | 'settings' | 'clients'>('overview');
-  const [dateRange, setDateRange] = useState<'7d' | '30d' | 'this_month'>('30d');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 30);
+    return d.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(10);
   const [reportType, setReportType] = useState<string>('followers');
   const [metaSortField, setMetaSortField] = useState<string>('spend');
   const [metaSortDirection, setMetaSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -627,9 +636,9 @@ export default function App() {
     } else {
       try {
         // Load metrics
-        const metRes = await authenticatedFetch(`/api/metrics?range=${dateRange}&clientId=${targetId}`);
+        const metRes = await authenticatedFetch(`/api/metrics?startDate=${startDate}&endDate=${endDate}&clientId=${targetId}`);
         if (metRes.ok) {
-          const data = await metRes.json();
+          const data = await metRes.ok ? await metRes.json() : { meta: [], google: [], tiktok: [], lastUpdates: { meta: 0, google: 0, tiktok: 0 } };
           setDbData(data);
           if (data.lastUpdates) {
             setLastUpdates(data.lastUpdates);
@@ -652,7 +661,7 @@ export default function App() {
 
   useEffect(() => {
     loadData();
-  }, [currentUser, selectedClientId, dateRange, isSandbox]);
+  }, [currentUser, selectedClientId, startDate, endDate, isSandbox]);
 
   // Determine active platform
   const getActivePlatform = (): 'meta' | 'google' | 'tiktok' | 'all' => {
@@ -1079,23 +1088,19 @@ export default function App() {
 
   // Filter metrics by date range (used locally)
   const filterByDate = <T extends { date: string }>(data: T[]): T[] => {
-    const today = new Date();
-    let daysToKeep = 30;
-
-    if (dateRange === '7d') {
-      daysToKeep = 7;
-    } else if (dateRange === '30d') {
-      daysToKeep = 30;
-    } else if (dateRange === 'this_month') {
-      daysToKeep = today.getDate();
-    }
-
-    const cutoffDate = new Date();
-    cutoffDate.setDate(today.getDate() - daysToKeep);
+    if (!startDate || !endDate) return data;
+    
+    // We normalize date boundaries using split to avoid timezone offsets
+    const startParts = startDate.split('-');
+    const endParts = endDate.split('-');
+    
+    const start = new Date(Number(startParts[0]), Number(startParts[1]) - 1, Number(startParts[2]), 0, 0, 0, 0);
+    const end = new Date(Number(endParts[0]), Number(endParts[1]) - 1, Number(endParts[2]), 23, 59, 59, 999);
 
     return data.filter((item) => {
-      const itemDate = new Date(item.date);
-      return itemDate >= cutoffDate;
+      const itemParts = item.date.split('-');
+      const itemDate = new Date(Number(itemParts[0]), Number(itemParts[1]) - 1, Number(itemParts[2]), 12, 0, 0, 0);
+      return itemDate >= start && itemDate <= end;
     });
   };
 
@@ -1172,6 +1177,22 @@ export default function App() {
         : (bVal as number) - (aVal as number);
     }
   });
+
+  const paginatedMeta = sortedMetaForTable.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  
+  const totalPages = Math.ceil(sortedMetaForTable.length / pageSize);
+  const pagesToRender: number[] = [];
+  if (totalPages <= 5) {
+    for (let i = 1; i <= totalPages; i++) pagesToRender.push(i);
+  } else {
+    if (currentPage <= 3) {
+      pagesToRender.push(1, 2, 3, 4, totalPages);
+    } else if (currentPage >= totalPages - 2) {
+      pagesToRender.push(1, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+    } else {
+      pagesToRender.push(1, currentPage - 1, currentPage, currentPage + 1, totalPages);
+    }
+  }
 
   const totalSpend = metaSpend + googleSpend + tiktokSpend;
   const totalImpressions = metaImpressions + googleImpressions + tiktokImpressions;
@@ -1676,12 +1697,69 @@ export default function App() {
               );
             })()}
 
-            {activeTab !== 'settings' && activeTab !== 'clients' && (
-              <select className="date-selector" value={dateRange} onChange={(e) => setDateRange(e.target.value as any)}>
-                <option value="7d">Últimos 7 dias</option>
-                <option value="30d">Últimos 30 dias</option>
-                <option value="this_month">Mês Atual</option>
+            {activeTab === 'meta' && (
+              <select 
+                className="date-selector" 
+                value={reportType} 
+                onChange={(e) => {
+                  setReportType(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ minWidth: '180px' }}
+              >
+                <option value="followers">Visitantes do Perfil</option>
               </select>
+            )}
+
+            {activeTab !== 'settings' && activeTab !== 'clients' && (
+              <div className="date-picker-container" style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                backgroundColor: 'var(--bg-secondary)', 
+                border: '1px solid var(--border-color)', 
+                padding: '10px 16px', 
+                borderRadius: '10px',
+                height: '42px',
+                boxSizing: 'border-box'
+              }}>
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>De</span>
+                <input 
+                  type="date" 
+                  value={startDate} 
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  style={{ 
+                    background: 'transparent', 
+                    border: 'none', 
+                    color: 'var(--text-primary)', 
+                    outline: 'none', 
+                    cursor: 'pointer', 
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-body)'
+                  }}
+                />
+                <span style={{ fontSize: '13px', color: 'var(--text-muted)' }}>até</span>
+                <input 
+                  type="date" 
+                  value={endDate} 
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  style={{ 
+                    background: 'transparent', 
+                    border: 'none', 
+                    color: 'var(--text-primary)', 
+                    outline: 'none', 
+                    cursor: 'pointer', 
+                    fontSize: '13px',
+                    fontFamily: 'var(--font-body)'
+                  }}
+                />
+              </div>
             )}
 
             {activeTab !== 'clients' && (() => {
@@ -1969,20 +2047,7 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* Tipo de Relatório Selector */}
-                <div className="panel-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Tipo de Relatório</span>
-                    <select 
-                      value={reportType} 
-                      onChange={(e) => setReportType(e.target.value)}
-                      className="custom-select" 
-                      style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', width: '220px', fontSize: '13px', cursor: 'pointer' }}
-                    >
-                      <option value="followers">Visitantes do Perfil</option>
-                    </select>
-                  </div>
-                </div>
+
 
                 {/* Meta KPI Cards */}
                 {reportType === 'followers' ? (
@@ -2117,7 +2182,7 @@ export default function App() {
                         <>
                           <thead>
                             <tr>
-                              <th style={{ userSelect: 'none' }}>Mídia</th>
+                              <th style={{ userSelect: 'none', textAlign: 'center' }}>Mídia</th>
                               <th onClick={() => handleMetaSort('ad_name')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                                 Anúncio {renderSortIndicator('ad_name')}
                               </th>
@@ -2142,12 +2207,12 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {sortedMetaForTable.slice(0, 15).map((m, idx) => {
+                            {paginatedMeta.map((m, idx) => {
                               const cpv = m.instagram_profile_visits && m.instagram_profile_visits > 0 ? (m.spend || 0) / m.instagram_profile_visits : 0;
                               return (
                                 <tr key={idx}>
-                                  <td>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <td style={{ textAlign: 'center' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
                                       {m.ad_thumbnail_url ? (
                                         <img 
                                           src={m.ad_thumbnail_url} 
@@ -2163,9 +2228,27 @@ export default function App() {
                                           target="_blank" 
                                           rel="noopener noreferrer" 
                                           title="Visualizar Anúncio"
-                                          style={{ color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                          style={{ 
+                                            color: 'var(--color-primary)', 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            justifyContent: 'center',
+                                            padding: '8px',
+                                            borderRadius: '8px',
+                                            backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                            border: '1px solid var(--border-color)',
+                                            transition: 'all var(--transition-fast)'
+                                          }}
+                                          onMouseEnter={(e) => {
+                                            e.currentTarget.style.backgroundColor = 'var(--color-primary)';
+                                            e.currentTarget.style.color = '#fff';
+                                          }}
+                                          onMouseLeave={(e) => {
+                                            e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)';
+                                            e.currentTarget.style.color = 'var(--color-primary)';
+                                          }}
                                         >
-                                          <ArrowUpRight size={16} />
+                                          <ArrowUpRight size={20} />
                                         </a>
                                       )}
                                     </div>
@@ -2264,7 +2347,7 @@ export default function App() {
                             </tr>
                           </thead>
                           <tbody>
-                            {sortedMetaForTable.slice(0, 15).map((m, idx) => {
+                            {paginatedMeta.map((m, idx) => {
                               return (
                                 <tr key={idx}>
                                   <td>{m.ad_id || '-'}</td>
@@ -2292,6 +2375,117 @@ export default function App() {
                         </>
                       )}
                     </table>
+                  </div>
+                  
+                  {/* Pagination Footer */}
+                  <div style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '16px 20px',
+                    borderTop: '1px solid var(--border-color)',
+                    backgroundColor: 'rgba(255,255,255,0.01)',
+                    borderBottomLeftRadius: '12px',
+                    borderBottomRightRadius: '12px',
+                    flexWrap: 'wrap',
+                    gap: '12px'
+                  }}>
+                    {/* Page Size Selector */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                      <span>Mostrar</span>
+                      <select
+                        value={pageSize}
+                        onChange={(e) => {
+                          setPageSize(Number(e.target.value));
+                          setCurrentPage(1);
+                        }}
+                        className="custom-select"
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid var(--border-color)',
+                          backgroundColor: 'var(--bg-secondary)',
+                          color: 'var(--text-primary)',
+                          fontSize: '13px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <option value={10}>10</option>
+                        <option value={25}>25</option>
+                        <option value={50}>50</option>
+                        <option value={100}>100</option>
+                      </select>
+                      <span>anúncios por página</span>
+                    </div>
+
+                    {/* Pagination Info */}
+                    <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
+                      Exibindo {sortedMetaForTable.length === 0 ? 0 : Math.min(sortedMetaForTable.length, (currentPage - 1) * pageSize + 1)} a {Math.min(sortedMetaForTable.length, currentPage * pageSize)} de {sortedMetaForTable.length} anúncios
+                    </div>
+
+                    {/* Page Navigation */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="control-btn"
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                          opacity: currentPage === 1 ? 0.5 : 1,
+                          backgroundColor: 'rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-primary)'
+                        }}
+                      >
+                        Anterior
+                      </button>
+                      {pagesToRender.map((pageNum, idx) => {
+                        const prevPage = pagesToRender[idx - 1];
+                        const showEllipsis = prevPage && pageNum - prevPage > 1;
+                        return (
+                          <div key={pageNum} style={{ display: 'flex', alignItems: 'center' }}>
+                            {showEllipsis && <span style={{ color: 'var(--text-muted)', margin: '0 8px', fontSize: '13px' }}>...</span>}
+                            <button
+                              onClick={() => setCurrentPage(pageNum)}
+                              style={{
+                                padding: '6px 12px',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                cursor: 'pointer',
+                                backgroundColor: currentPage === pageNum ? 'var(--color-primary)' : 'transparent',
+                                border: currentPage === pageNum ? '1px solid var(--color-primary)' : '1px solid transparent',
+                                color: currentPage === pageNum ? '#fff' : 'var(--text-primary)',
+                                fontWeight: currentPage === pageNum ? 'bold' : 'normal',
+                                minWidth: '32px',
+                                textAlign: 'center'
+                              }}
+                            >
+                              {pageNum}
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages || totalPages === 0}
+                        className="control-btn"
+                        style={{
+                          padding: '6px 12px',
+                          borderRadius: '6px',
+                          fontSize: '13px',
+                          cursor: (currentPage === totalPages || totalPages === 0) ? 'not-allowed' : 'pointer',
+                          opacity: (currentPage === totalPages || totalPages === 0) ? 0.5 : 1,
+                          backgroundColor: 'rgba(255,255,255,0.05)',
+                          border: '1px solid var(--border-color)',
+                          color: 'var(--text-primary)'
+                        }}
+                      >
+                        Próximo
+                      </button>
+                    </div>
                   </div>
                 </div>
               </>
