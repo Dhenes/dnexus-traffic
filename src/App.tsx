@@ -87,6 +87,7 @@ interface MetaMetric {
   ad_preview_url?: string;
   ad_thumbnail_url?: string;
   instagram_followers?: number;
+  instagram_profile_visits?: number;
 }
 
 interface GoogleMetric {
@@ -199,6 +200,7 @@ const generateMockData = (clientId: string) => {
         const newMessagingConnections = Math.round(clicks * 0.05);
         const purchasesConversionValue = parseFloat((purchases * (60 + Math.random() * 40)).toFixed(2));
         const instagramFollowers = Math.round(reach * (0.01 + Math.random() * 0.02));
+        const instagramProfileVisits = Math.round(instagramFollowers * (2.5 + Math.random() * 2));
         
         const videoPlays = isVideo ? Math.round(impressions * 0.65) : 0;
         const video3SecViews = isVideo ? Math.round(videoPlays * 0.8) : 0;
@@ -235,7 +237,8 @@ const generateMockData = (clientId: string) => {
           thruplays,
           ad_preview_url: `https://facebook.com/ads/library/?id=${ad.id}`,
           ad_thumbnail_url: thumbnail,
-          instagram_followers: instagramFollowers
+          instagram_followers: instagramFollowers,
+          instagram_profile_visits: instagramProfileVisits
         });
       });
     });
@@ -1105,7 +1108,7 @@ export default function App() {
   const metaImpressions = filteredMeta.reduce((acc, curr) => acc + curr.impressions, 0);
   const metaClicks = filteredMeta.reduce((acc, curr) => acc + curr.clicks, 0);
   const metaConversions = filteredMeta.reduce((acc, curr) => acc + (curr.purchases || 0) + (curr.leads || 0), 0);
-  const metaFollowers = filteredMeta.reduce((acc, curr) => acc + (curr.instagram_followers || 0), 0);
+  const metaProfileVisits = filteredMeta.reduce((acc, curr) => acc + (curr.instagram_profile_visits || 0), 0);
   const metaVideoPlays = filteredMeta.reduce((acc, curr) => acc + (curr.video_plays || 0), 0);
   const metaReach = filteredMeta.reduce((acc, curr) => acc + (curr.reach || 0), 0);
 
@@ -1143,6 +1146,13 @@ export default function App() {
       const bCpf = b.instagram_followers && b.instagram_followers > 0 ? (b.spend || 0) / b.instagram_followers : 0;
       aVal = aCpf;
       bVal = bCpf;
+    }
+
+    if (metaSortField === 'cpv') {
+      const aCpv = a.instagram_profile_visits && a.instagram_profile_visits > 0 ? (a.spend || 0) / a.instagram_profile_visits : 0;
+      const bCpv = b.instagram_profile_visits && b.instagram_profile_visits > 0 ? (b.spend || 0) / b.instagram_profile_visits : 0;
+      aVal = aCpv;
+      bVal = bCpv;
     }
 
     if (aVal === undefined || aVal === null) {
@@ -2015,27 +2025,27 @@ export default function App() {
 
                     <div className="kpi-card">
                       <div className="kpi-card-header">
-                        <span className="kpi-title">Seguidores</span>
+                        <span className="kpi-title">Visitantes do Perfil</span>
                         <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-success-glow)', color: 'var(--color-success)' }}>
                           <UserPlus size={20} />
                         </div>
                       </div>
                       <div>
-                        <div className="kpi-value">{metaFollowers.toLocaleString('pt-BR')}</div>
+                        <div className="kpi-value">{metaProfileVisits.toLocaleString('pt-BR')}</div>
                       </div>
                     </div>
 
                     <div className="kpi-card">
                       <div className="kpi-card-header">
-                        <span className="kpi-title">Custo Por Seguidor</span>
+                        <span className="kpi-title">Custo Por Visitante do Perfil</span>
                         <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
                           <DollarSign size={20} />
                         </div>
                       </div>
                       <div>
                         <div className="kpi-value">
-                          {metaFollowers > 0 
-                            ? `R$ ${(metaSpend / metaFollowers).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                          {metaProfileVisits > 0 
+                            ? `R$ ${(metaSpend / metaProfileVisits).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
                             : 'R$ 0,00'
                           }
                         </div>
@@ -2123,17 +2133,17 @@ export default function App() {
                               <th onClick={() => handleMetaSort('video_plays')} style={{ cursor: 'pointer', userSelect: 'none' }}>
                                 Reproduções de Vídeo {renderSortIndicator('video_plays')}
                               </th>
-                              <th onClick={() => handleMetaSort('instagram_followers')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                Seguidores {renderSortIndicator('instagram_followers')}
+                              <th onClick={() => handleMetaSort('instagram_profile_visits')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Visitantes do Perfil {renderSortIndicator('instagram_profile_visits')}
                               </th>
-                              <th onClick={() => handleMetaSort('cpf')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                Custo Por Seguidor {renderSortIndicator('cpf')}
+                              <th onClick={() => handleMetaSort('cpv')} style={{ cursor: 'pointer', userSelect: 'none' }}>
+                                Custo Por Visitante do Perfil {renderSortIndicator('cpv')}
                               </th>
                             </tr>
                           </thead>
                           <tbody>
                             {sortedMetaForTable.slice(0, 15).map((m, idx) => {
-                              const cpf = m.instagram_followers && m.instagram_followers > 0 ? (m.spend || 0) / m.instagram_followers : 0;
+                              const cpv = m.instagram_profile_visits && m.instagram_profile_visits > 0 ? (m.spend || 0) / m.instagram_profile_visits : 0;
                               return (
                                 <tr key={idx}>
                                   <td>
@@ -2165,10 +2175,10 @@ export default function App() {
                                   <td>{(m.reach || 0).toLocaleString('pt-BR')}</td>
                                   <td>{(m.impressions || 0).toLocaleString('pt-BR')}</td>
                                   <td>{(m.video_plays || 0).toLocaleString('pt-BR')}</td>
-                                  <td>{(m.instagram_followers || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.instagram_profile_visits || 0).toLocaleString('pt-BR')}</td>
                                   <td>
-                                    {cpf > 0 
-                                      ? `R$ ${cpf.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                    {cpv > 0 
+                                      ? `R$ ${cpv.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
                                       : '-'
                                     }
                                   </td>
@@ -2183,10 +2193,10 @@ export default function App() {
                               <td>{metaReach.toLocaleString('pt-BR')}</td>
                               <td>{metaImpressions.toLocaleString('pt-BR')}</td>
                               <td>{metaVideoPlays.toLocaleString('pt-BR')}</td>
-                              <td>{metaFollowers.toLocaleString('pt-BR')}</td>
+                              <td>{metaProfileVisits.toLocaleString('pt-BR')}</td>
                               <td>
-                                {metaFollowers > 0 
-                                  ? `R$ ${(metaSpend / metaFollowers).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                {metaProfileVisits > 0 
+                                  ? `R$ ${(metaSpend / metaProfileVisits).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
                                   : '-'
                                 }
                               </td>

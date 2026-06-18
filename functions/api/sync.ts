@@ -141,7 +141,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const { accessToken, accountId } = parsedMetaCreds;
         const actId = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
         
-        const metaApiUrl = `https://graph.facebook.com/v19.0/${actId}/insights` +
+        const metaApiUrl = `https://graph.facebook.com/v25.0/${actId}/insights` +
           `?fields=campaign_id,campaign_name,ad_id,ad_name,adset_name,reach,impressions,clicks,spend,actions,action_values,instagram_profile_visits,` +
           `video_play_actions,video_thruplay_watched_actions,` +
           `video_continuous_2_sec_watched_actions,` +
@@ -176,7 +176,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           for (let i = 0; i < adIds.length; i += chunkSize) {
             const chunk = adIds.slice(i, i + chunkSize);
             const idsQuery = chunk.join(',');
-            const detailsUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{id}&access_token=${accessToken}`;
+            const detailsUrl = `https://graph.facebook.com/v25.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{id}&access_token=${accessToken}`;
             
             try {
               const detailsRes = await fetch(detailsUrl);
@@ -209,7 +209,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             for (let i = 0; i < uniqueCreativeIds.length; i += chunkSize) {
               const chunk = uniqueCreativeIds.slice(i, i + chunkSize);
               const idsQuery = chunk.join(',');
-              const creativeUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=thumbnail_url,image_url&thumbnail_width=320&thumbnail_height=568&access_token=${accessToken}`;
+              const creativeUrl = `https://graph.facebook.com/v25.0/?ids=${idsQuery}&fields=thumbnail_url,image_url&thumbnail_width=320&thumbnail_height=568&access_token=${accessToken}`;
               
               try {
                 const creativeRes = await fetch(creativeUrl);
@@ -278,6 +278,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             'onsite_conversion.instagram_ad_follows',
             'onsite_conversion.instagram_ad_follow'
           ]);
+          const instagramProfileVisits = parseInt(item.instagram_profile_visits || '0', 10);
 
           const linkClicks = getActionValue(item.actions, ['link_click']);
           const checkoutsInitiated = getActionValue(item.actions, ['initiate_checkout']);
@@ -306,7 +307,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 likes, comments, saves, shares, instagram_followers, 
                 link_clicks, checkouts_initiated, leads, new_messaging_connections, purchases, purchases_conversion_value, 
                 video_plays, video_3_sec_views, video_2_sec_continuous_views, video_15_sec_views, 
-                ad_preview_url, ad_thumbnail_url, updated_at
+                ad_preview_url, ad_thumbnail_url, instagram_profile_visits, updated_at
               )
               VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 
@@ -315,7 +316,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 ?21, ?22, ?23, ?24, ?25, 
                 ?26, ?27, ?28, ?29, ?30, ?31, 
                 ?32, ?33, ?34, ?35, 
-                ?36, ?37, ?38
+                ?36, ?37, ?38, ?39
               )
               ON CONFLICT(id) DO UPDATE SET
                 campaign_name = ?5,
@@ -350,7 +351,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 video_15_sec_views = ?35,
                 ad_preview_url = ?36,
                 ad_thumbnail_url = ?37,
-                updated_at = ?38
+                instagram_profile_visits = ?38,
+                updated_at = ?39
             `).bind(
               id, targetClientId, dateStr, campaignId, campaignName, adId, adName, adsetName, reach, impressions, clicks, spend,
               landingPageViews, videoViews, thruplays,
@@ -358,7 +360,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
               likes, comments, saves, shares, instagramFollowers,
               linkClicks, checkoutsInitiated, leads, newMessagingConnections, purchases, purchasesConversionValue,
               videoPlays, video3SecViews, video2SecContinuousViews, video15SecViews,
-              adPreviewUrl, adThumbnailUrl, timestamp
+              adPreviewUrl, adThumbnailUrl, instagramProfileVisits, timestamp
             )
           );
         });
