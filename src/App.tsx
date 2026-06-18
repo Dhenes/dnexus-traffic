@@ -809,6 +809,10 @@ export default function App() {
 
   const topCampaigns = getTopCampaigns();
 
+  const isMetaConnected = !!(creds.meta.accountId && creds.meta.appId && creds.meta.accessToken);
+  const isGoogleConnected = !!(creds.google.customerId && creds.google.devToken && creds.google.clientId && creds.google.clientSecret && creds.google.refreshToken);
+  const isTiktokConnected = !!(creds.tiktok.advertiserId && creds.tiktok.appId && creds.tiktok.secret && creds.tiktok.accessToken);
+
   // LOGIN PAGE VIEW RENDER
   if (!token || !currentUser) {
     return (
@@ -1648,7 +1652,9 @@ export default function App() {
                       <MetaLogo />
                       <span>Meta Ads API</span>
                     </div>
-                    <span className="badge badge-meta">Conexão Pendente</span>
+                    <span className={`badge ${isMetaConnected ? 'badge-success' : 'badge-meta'}`}>
+                      {isMetaConnected ? 'Conectado' : 'Conexão Pendente'}
+                    </span>
                   </div>
 
                   <div className="wizard-container">
@@ -1727,7 +1733,9 @@ export default function App() {
                       <GoogleLogo />
                       <span>Google Ads API</span>
                     </div>
-                    <span className="badge badge-google">Conexão Pendente</span>
+                    <span className={`badge ${isGoogleConnected ? 'badge-success' : 'badge-google'}`}>
+                      {isGoogleConnected ? 'Conectado' : 'Conexão Pendente'}
+                    </span>
                   </div>
 
                   <div className="wizard-container">
@@ -1810,7 +1818,9 @@ export default function App() {
                       <TikTokLogo />
                       <span>TikTok Ads API</span>
                     </div>
-                    <span className="badge badge-tiktok">Conexão Pendente</span>
+                    <span className={`badge ${isTiktokConnected ? 'badge-success' : 'badge-tiktok'}`}>
+                      {isTiktokConnected ? 'Conectado' : 'Conexão Pendente'}
+                    </span>
                   </div>
 
                   <div className="wizard-container" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>

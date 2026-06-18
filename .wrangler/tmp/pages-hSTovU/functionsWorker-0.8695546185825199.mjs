@@ -462,16 +462,113 @@ var onRequestPost4 = /* @__PURE__ */ __name(async (context) => {
         headers: { "Content-Type": "application/json" }
       });
     }
-    const today = /* @__PURE__ */ new Date();
-    const batchStatements = [];
     const timestamp = Date.now();
+    const batchStatements = [];
+    const metaCredRow = await context.env.DB.prepare(
+      "SELECT credentials_json, account_id FROM ad_credentials WHERE client_id = ? AND platform = ?"
+    ).bind(targetClientId, "meta").first();
+    let metaSyncSummary = "";
+    let metaCredentialsValid = false;
+    let parsedMetaCreds = null;
+    if (metaCredRow) {
+      try {
+        parsedMetaCreds = JSON.parse(metaCredRow.credentials_json);
+        if (parsedMetaCreds.accountId && parsedMetaCreds.accessToken && parsedMetaCreds.accessToken !== "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022") {
+          metaCredentialsValid = true;
+        }
+      } catch (e) {
+        console.error("Failed to parse Meta credentials", e);
+      }
+    }
+    if (metaCredentialsValid && parsedMetaCreds) {
+      const { accessToken, accountId } = parsedMetaCreds;
+      const actId = accountId.startsWith("act_") ? accountId : `act_${accountId}`;
+      const metaApiUrl = `https://graph.facebook.com/v19.0/${actId}/insights?fields=campaign_id,campaign_name,reach,impressions,clicks,spend,actions&level=campaign&time_increment=1&date_preset=last_30d&access_token=${accessToken}`;
+      const metaRes = await fetch(metaApiUrl);
+      if (!metaRes.ok) {
+        const errData = await metaRes.json();
+        throw new Error(`Erro na API do Meta Ads: ${errData.error?.message || metaRes.statusText}`);
+      }
+      const metaData = await metaRes.json();
+      const insights = metaData.data || [];
+      insights.forEach((item) => {
+        const dateStr = item.date_start;
+        const campaignId = item.campaign_id;
+        const campaignName = item.campaign_name;
+        const reach = parseInt(item.reach || "0", 10);
+        const impressions = parseInt(item.impressions || "0", 10);
+        const clicks = parseInt(item.clicks || "0", 10);
+        const spend = parseFloat(item.spend || "0.0");
+        let conversions = 0;
+        if (item.actions && Array.isArray(item.actions)) {
+          const conversionTypes = ["purchase", "lead", "complete_registration", "onsite_conversion", "submit_application"];
+          item.actions.forEach((act) => {
+            const isConv = conversionTypes.some((type) => act.action_type.includes(type));
+            if (isConv) {
+              conversions += parseInt(act.value || "0", 10);
+            }
+          });
+          if (conversions === 0) {
+            conversions = item.actions.reduce((acc, act) => acc + parseInt(act.value || "0", 10), 0);
+          }
+        }
+        const id = `${targetClientId}_meta_${campaignId}_${dateStr}`;
+        batchStatements.push(
+          context.env.DB.prepare(`
+            INSERT INTO meta_daily_metrics (id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+            ON CONFLICT(id) DO UPDATE SET
+              campaign_name = ?5,
+              reach = ?6,
+              impressions = ?7,
+              clicks = ?8,
+              spend = ?9,
+              conversions_actions = ?10,
+              updated_at = ?11
+          `).bind(id, targetClientId, dateStr, campaignId, campaignName, reach, impressions, clicks, spend, conversions, timestamp)
+        );
+      });
+      metaSyncSummary = `Meta Ads: ${insights.length} registros reais importados.`;
+    } else {
+      const scale = targetClientId === "c_alfa" ? 1.6 : 0.8;
+      const clientSuffix2 = targetClientId === "c_alfa" ? "Alfa" : "Beta";
+      const campaignsMeta = [
+        { id: "m_c1", name: `Meta_Convers\xE3o_Ebook_${clientSuffix2}` },
+        { id: "m_c2", name: `Meta_Lookalike_Compradores_${clientSuffix2}` },
+        { id: "m_c3", name: `Meta_Remarketing_Carrinho_${clientSuffix2}` }
+      ];
+      for (let i = 29; i >= 0; i--) {
+        const d = /* @__PURE__ */ new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split("T")[0];
+        campaignsMeta.forEach((c) => {
+          const rand = (Math.sin(i * 0.5) * 0.2 + 1) * scale;
+          const reach = Math.round((5e3 + Math.random() * 2e3) * rand);
+          const impressions = Math.round(reach * (1.1 + Math.random() * 0.2));
+          const clicks = Math.round(impressions * (0.015 + Math.random() * 0.01));
+          const spend = parseFloat(((150 + Math.random() * 80) * rand).toFixed(2));
+          const conversions = Math.round(clicks * (0.05 + Math.random() * 0.04));
+          const id = `${targetClientId}_meta_${c.id}_${dateStr}`;
+          batchStatements.push(
+            context.env.DB.prepare(`
+              INSERT INTO meta_daily_metrics (id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, updated_at)
+              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+              ON CONFLICT(id) DO UPDATE SET
+                campaign_name = ?5,
+                reach = ?6,
+                impressions = ?7,
+                clicks = ?8,
+                spend = ?9,
+                conversions_actions = ?10,
+                updated_at = ?11
+            `).bind(id, targetClientId, dateStr, c.id, c.name, reach, impressions, clicks, spend, conversions, timestamp)
+          );
+        });
+      }
+      metaSyncSummary = `Meta Ads: 90 registros simulados gerados.`;
+    }
     const scaleFactor = targetClientId === "c_alfa" ? 1.8 : 0.8;
     const clientSuffix = targetClientId === "c_alfa" ? "Alfa" : "Beta";
-    const campaignsMeta = [
-      { id: "m_c1", name: `Meta_Convers\xE3o_Ebook_${clientSuffix}` },
-      { id: "m_c2", name: `Meta_Lookalike_Compradores_${clientSuffix}` },
-      { id: "m_c3", name: `Meta_Remarketing_Carrinho_${clientSuffix}` }
-    ];
     const campaignsGoogle = [
       { id: "g_c1", name: `Google_Pesquisa_Marca_${clientSuffix}` },
       { id: "g_c2", name: `Google_PMax_Produtos_${clientSuffix}` },
@@ -485,29 +582,6 @@ var onRequestPost4 = /* @__PURE__ */ __name(async (context) => {
       const d = /* @__PURE__ */ new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split("T")[0];
-      campaignsMeta.forEach((c) => {
-        const rand = (Math.sin(i * 0.5) * 0.2 + 1) * scaleFactor;
-        const reach = Math.round((5e3 + Math.random() * 2e3) * rand);
-        const impressions = Math.round(reach * (1.1 + Math.random() * 0.2));
-        const clicks = Math.round(impressions * (0.015 + Math.random() * 0.01));
-        const spend = parseFloat(((150 + Math.random() * 80) * rand).toFixed(2));
-        const conversions = Math.round(clicks * (0.05 + Math.random() * 0.04));
-        const id = `${targetClientId}_meta_${c.id}_${dateStr}`;
-        batchStatements.push(
-          context.env.DB.prepare(`
-            INSERT INTO meta_daily_metrics (id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
-            ON CONFLICT(id) DO UPDATE SET
-              campaign_name = ?5,
-              reach = ?6,
-              impressions = ?7,
-              clicks = ?8,
-              spend = ?9,
-              conversions_actions = ?10,
-              updated_at = ?11
-          `).bind(id, targetClientId, dateStr, c.id, c.name, reach, impressions, clicks, spend, conversions, timestamp)
-        );
-      });
       campaignsGoogle.forEach((c) => {
         const rand = (Math.cos(i * 0.4) * 0.25 + 1) * scaleFactor;
         const impressions = Math.round((8e3 + Math.random() * 3e3) * rand);
@@ -559,7 +633,7 @@ var onRequestPost4 = /* @__PURE__ */ __name(async (context) => {
     return new Response(
       JSON.stringify({
         success: true,
-        summary: `30 dias de m\xE9tricas geradas para ${clientSuffix} no banco D1.`
+        summary: `${metaSyncSummary} Google e TikTok Ads: simulados.`
       }),
       {
         headers: { "Content-Type": "application/json" }
@@ -1220,7 +1294,7 @@ var jsonError = /* @__PURE__ */ __name(async (request, env, _ctx, middlewareCtx)
 }, "jsonError");
 var middleware_miniflare3_json_error_default = jsonError;
 
-// ../.wrangler/tmp/bundle-y0mpnE/middleware-insertion-facade.js
+// ../.wrangler/tmp/bundle-cMmucg/middleware-insertion-facade.js
 var __INTERNAL_WRANGLER_MIDDLEWARE__ = [
   middleware_ensure_req_body_drained_default,
   middleware_miniflare3_json_error_default
@@ -1252,7 +1326,7 @@ function __facade_invoke__(request, env, ctx, dispatch, finalMiddleware) {
 }
 __name(__facade_invoke__, "__facade_invoke__");
 
-// ../.wrangler/tmp/bundle-y0mpnE/middleware-loader.entry.ts
+// ../.wrangler/tmp/bundle-cMmucg/middleware-loader.entry.ts
 var __Facade_ScheduledController__ = class ___Facade_ScheduledController__ {
   constructor(scheduledTime, cron, noRetry) {
     this.scheduledTime = scheduledTime;
