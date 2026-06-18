@@ -239,7 +239,6 @@ export default function App() {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'client'>('client');
-  const [newUserClientId, setNewUserClientId] = useState('');
   const [newUserClientIds, setNewUserClientIds] = useState<string[]>([]);
 
   // Editing states
@@ -248,7 +247,6 @@ export default function App() {
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editingUserEmail, setEditingUserEmail] = useState<string>('');
   const [editingUserRole, setEditingUserRole] = useState<'admin' | 'client'>('client');
-  const [editingUserClientId, setEditingUserClientId] = useState<string>('');
   const [editingUserClientIds, setEditingUserClientIds] = useState<string[]>([]);
   const [editingUserPassword, setEditingUserPassword] = useState<string>('');
 
@@ -2292,7 +2290,6 @@ export default function App() {
                                   setEditingUserId(u.id);
                                   setEditingUserEmail(u.email);
                                   setEditingUserRole(u.role as any);
-                                  setEditingUserClientId(u.client_id || '');
                                   setEditingUserClientIds(u.clientIds || (u.client_id ? [u.client_id] : []));
                                   setEditingUserPassword('');
                                 }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center' }} title="Editar">
