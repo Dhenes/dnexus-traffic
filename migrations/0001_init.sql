@@ -87,17 +87,7 @@ CREATE INDEX IF NOT EXISTS idx_tiktok_client_date ON tiktok_daily_metrics(client
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
 -- SEMENTES DE DADOS (SEED)
--- Inserir Clientes Iniciais
-INSERT OR IGNORE INTO clients (id, name, created_at) VALUES ('c_alfa', 'Cliente Alfa (Varejo)', 1781754000000);
-INSERT OR IGNORE INTO clients (id, name, created_at) VALUES ('c_beta', 'Cliente Beta (SaaS)', 1781754000000);
-
--- Inserir Usuários Iniciais
--- Senha de teste para todos: admin123 (hash SHA-256: 240aa2472d2875ed53dbf19029e2d6237c412911c87199a0937a2f24524190f4)
+-- Inserir Usuário Administrador Inicial
+-- Senha de teste: admin123 (hash SHA-256 correto: 240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9)
 INSERT OR IGNORE INTO users (id, email, password_hash, role, client_id, created_at) 
-VALUES ('u_admin', 'admin@dnexus.com', '240aa2472d2875ed53dbf19029e2d6237c412911c87199a0937a2f24524190f4', 'admin', NULL, 1781754000000);
-
-INSERT OR IGNORE INTO users (id, email, password_hash, role, client_id, created_at) 
-VALUES ('u_alfa', 'alfa@dnexus.com', '240aa2472d2875ed53dbf19029e2d6237c412911c87199a0937a2f24524190f4', 'client', 'c_alfa', 1781754000000);
-
-INSERT OR IGNORE INTO users (id, email, password_hash, role, client_id, created_at) 
-VALUES ('u_beta', 'beta@dnexus.com', '240aa2472d2875ed53dbf19029e2d6237c412911c87199a0937a2f24524190f4', 'client', 'c_beta', 1781754000000);
+VALUES ('u_admin', 'admin@dnexus.com', '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9', 'admin', NULL, 1781754000000);

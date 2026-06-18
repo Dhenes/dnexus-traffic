@@ -18,7 +18,10 @@ import {
   LogOut,
   Users,
   Plus,
-  Shield
+  Shield,
+  Edit2,
+  Trash2,
+  X
 } from 'lucide-react';
 import {
   AreaChart,
@@ -234,6 +237,15 @@ export default function App() {
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState<'admin' | 'client'>('client');
   const [newUserClientId, setNewUserClientId] = useState('');
+
+  // Editing states
+  const [editingClientId, setEditingClientId] = useState<string | null>(null);
+  const [editingClientName, setEditingClientName] = useState<string>('');
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingUserEmail, setEditingUserEmail] = useState<string>('');
+  const [editingUserRole, setEditingUserRole] = useState<'admin' | 'client'>('client');
+  const [editingUserClientId, setEditingUserClientId] = useState<string>('');
+  const [editingUserPassword, setEditingUserPassword] = useState<string>('');
 
   const [isSandbox, setIsSandbox] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -653,6 +665,181 @@ export default function App() {
     }
   };
 
+  // Admin - Delete client
+  const handleDeleteClient = async (clientId: string) => {
+    if (!window.confirm('Tem certeza que deseja excluir esta empresa? Isso apagará permanentemente todos os usuários, credenciais e métricas associadas.')) {
+      return;
+    }
+
+    if (isSandbox) {
+      setClients(clients.filter(c => c.id !== clientId));
+      setUsersList(usersList.filter(u => u.client_id !== clientId));
+      showToast('Empresa excluída no Sandbox!', 'success');
+      if (selectedClientId === clientId) {
+        setSelectedClientId('');
+      }
+    } else {
+      try {
+        setLoading(true);
+        const res = await authenticatedFetch(`/api/clients?id=${clientId}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          setClients(clients.filter(c => c.id !== clientId));
+          setUsersList(usersList.filter(u => u.client_id !== clientId));
+          showToast('Empresa excluída com sucesso!', 'success');
+          if (selectedClientId === clientId) {
+            setSelectedClientId('');
+          }
+        } else {
+          const data = await res.json();
+          showToast(data.error || 'Erro ao excluir empresa', 'error');
+        }
+      } catch {
+        showToast('Erro de conexão ao excluir', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Admin - Update client
+  const handleUpdateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingClientName.trim() || !editingClientId) return;
+
+    if (isSandbox) {
+      setClients(clients.map(c => c.id === editingClientId ? { ...c, name: editingClientName.trim() } : c));
+      setUsersList(usersList.map(u => u.client_id === editingClientId ? { ...u, client_name: editingClientName.trim() } : u));
+      setEditingClientId(null);
+      setEditingClientName('');
+      showToast('Empresa atualizada no Sandbox!', 'success');
+    } else {
+      try {
+        setLoading(true);
+        const res = await authenticatedFetch('/api/clients', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: editingClientId, name: editingClientName.trim() })
+        });
+        if (res.ok) {
+          setClients(clients.map(c => c.id === editingClientId ? { ...c, name: editingClientName.trim() } : c));
+          setUsersList(usersList.map(u => u.client_id === editingClientId ? { ...u, client_name: editingClientName.trim() } : u));
+          setEditingClientId(null);
+          setEditingClientName('');
+          showToast('Empresa atualizada com sucesso!', 'success');
+        } else {
+          const data = await res.json();
+          showToast(data.error || 'Erro ao atualizar empresa', 'error');
+        }
+      } catch {
+        showToast('Erro de conexão ao atualizar', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Admin - Delete user
+  const handleDeleteUser = async (userId: string) => {
+    if (userId === currentUser?.id) {
+      showToast('Você não pode excluir o seu próprio usuário', 'error');
+      return;
+    }
+
+    if (!window.confirm('Tem certeza que deseja excluir esta conta de usuário?')) {
+      return;
+    }
+
+    if (isSandbox) {
+      setUsersList(usersList.filter(u => u.id !== userId));
+      showToast('Usuário excluído no Sandbox!', 'success');
+    } else {
+      try {
+        setLoading(true);
+        const res = await authenticatedFetch(`/api/users?id=${userId}`, {
+          method: 'DELETE'
+        });
+        if (res.ok) {
+          setUsersList(usersList.filter(u => u.id !== userId));
+          showToast('Usuário excluído com sucesso!', 'success');
+        } else {
+          const data = await res.json();
+          showToast(data.error || 'Erro ao excluir usuário', 'error');
+        }
+      } catch {
+        showToast('Erro de conexão ao excluir', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  // Admin - Update user
+  const handleUpdateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUserId || !editingUserEmail) {
+      showToast('E-mail é obrigatório', 'error');
+      return;
+    }
+
+    if (editingUserRole === 'client' && !editingUserClientId) {
+      showToast('Selecione uma empresa para o cliente', 'error');
+      return;
+    }
+
+    if (isSandbox) {
+      const clientName = clients.find(c => c.id === editingUserClientId)?.name || '';
+      setUsersList(usersList.map(u => u.id === editingUserId ? {
+        ...u,
+        email: editingUserEmail,
+        role: editingUserRole,
+        client_id: editingUserRole === 'admin' ? '' : editingUserClientId,
+        client_name: editingUserRole === 'admin' ? '' : clientName
+      } : u));
+      setEditingUserId(null);
+      setEditingUserEmail('');
+      setEditingUserPassword('');
+      showToast('Usuário atualizado no Sandbox!', 'success');
+    } else {
+      try {
+        setLoading(true);
+        const res = await authenticatedFetch('/api/users', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editingUserId,
+            email: editingUserEmail,
+            password: editingUserPassword,
+            role: editingUserRole,
+            clientId: editingUserRole === 'admin' ? '' : editingUserClientId
+          })
+        });
+        if (res.ok) {
+          const clientName = clients.find(c => c.id === editingUserClientId)?.name || '';
+          setUsersList(usersList.map(u => u.id === editingUserId ? {
+            ...u,
+            email: editingUserEmail,
+            role: editingUserRole,
+            client_id: editingUserRole === 'admin' ? '' : editingUserClientId,
+            client_name: editingUserRole === 'admin' ? '' : clientName
+          } : u));
+          setEditingUserId(null);
+          setEditingUserEmail('');
+          setEditingUserPassword('');
+          showToast('Usuário atualizado com sucesso!', 'success');
+        } else {
+          const data = await res.json();
+          showToast(data.error || 'Erro ao atualizar usuário', 'error');
+        }
+      } catch {
+        showToast('Erro de conexão ao atualizar', 'error');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
   // Filter metrics by date range (used locally)
   const filterByDate = <T extends { date: string }>(data: T[]): T[] => {
     const today = new Date();
@@ -876,7 +1063,7 @@ export default function App() {
             }}>
               <Layers size={24} />
             </div>
-            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '26px', fontWeight: 700, letterSpacing: '-0.8px', color: '#fff' }}>Dnexus Traffic</h2>
+            <h2 style={{ fontFamily: 'var(--font-heading)', fontSize: '26px', fontWeight: 700, letterSpacing: '-0.8px', color: '#fff' }}>Dnexus</h2>
             <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px' }}>Dashboard de Tráfego Pago Consolidado</p>
           </div>
 
@@ -915,13 +1102,7 @@ export default function App() {
             </button>
           </form>
 
-          {/* Quick instructions/accounts */}
-          <div style={{ marginTop: '24px', padding: '14px', background: 'rgba(255,255,255,0.02)', borderRadius: '12px', border: '1px solid var(--border-color)', fontSize: '11px', color: 'var(--text-secondary)' }}>
-            <div style={{ fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>Logins de Teste (Local D1/Sandbox):</div>
-            <div>• <b>Admin</b>: <code>admin@dnexus.com</code> / <code>admin123</code></div>
-            <div style={{ marginTop: '4px' }}>• <b>Cliente Alfa</b>: <code>alfa@dnexus.com</code> / <code>admin123</code></div>
-            <div style={{ marginTop: '4px' }}>• <b>Cliente Beta</b>: <code>beta@dnexus.com</code> / <code>admin123</code></div>
-          </div>
+
           
           <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '11px', color: 'var(--text-muted)' }}>
             Modo: {isSandbox ? 'Sandbox Local (Sem Backend)' : 'Conectado ao Cloudflare D1'}
@@ -965,7 +1146,7 @@ export default function App() {
           <div className="sidebar-logo-icon">
             <Layers size={18} />
           </div>
-          <span>Dnexus Traffic</span>
+          <span>Dnexus</span>
         </div>
 
         <ul className="sidebar-menu">
@@ -1900,10 +2081,12 @@ export default function App() {
           <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '32px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '28px' }}>
               
-              {/* Form Create Client */}
+              {/* Form Create/Edit Client */}
               <div className="panel-card">
-                <span className="panel-card-title">Nova Empresa / Cliente</span>
-                <form onSubmit={handleCreateClient} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <span className="panel-card-title">
+                  {editingClientId ? 'Editar Empresa / Cliente' : 'Nova Empresa / Cliente'}
+                </span>
+                <form onSubmit={editingClientId ? handleUpdateClient : handleCreateClient} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                   <div className="form-group">
                     <label className="form-label">Nome da Empresa</label>
                     <input
@@ -1911,14 +2094,21 @@ export default function App() {
                       className="form-input"
                       required
                       placeholder="Ex: Empresa X S/A"
-                      value={newClientName}
-                      onChange={(e) => setNewClientName(e.target.value)}
+                      value={editingClientId ? editingClientName : newClientName}
+                      onChange={(e) => editingClientId ? setEditingClientName(e.target.value) : setNewClientName(e.target.value)}
                     />
                   </div>
-                  <button type="submit" className="control-btn control-btn-primary" style={{ padding: '12px', justifyContent: 'center' }}>
-                    <Plus size={16} />
-                    <span>Cadastrar Empresa</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button type="submit" className="control-btn control-btn-primary" style={{ padding: '12px', justifyContent: 'center', flex: 1 }}>
+                      {editingClientId ? <CheckCircle2 size={16} /> : <Plus size={16} />}
+                      <span>{editingClientId ? 'Salvar' : 'Cadastrar Empresa'}</span>
+                    </button>
+                    {editingClientId && (
+                      <button type="button" className="control-btn" style={{ padding: '12px', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)' }} onClick={() => { setEditingClientId(null); setEditingClientName(''); }}>
+                        <X size={16} />
+                      </button>
+                    )}
+                  </div>
                 </form>
 
                 <div style={{ marginTop: '20px' }}>
@@ -1926,21 +2116,37 @@ export default function App() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '250px', overflowY: 'auto' }}>
                     {clients.map(c => (
                       <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', borderRadius: '8px', fontSize: '12px' }}>
-                        <span style={{ fontWeight: 600 }}>{c.name}</span>
-                        <span style={{ color: 'var(--text-muted)' }}>ID: {c.id}</span>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{c.name}</div>
+                          <div style={{ color: 'var(--text-muted)', fontSize: '10px', marginTop: '2px' }}>ID: {c.id}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '8px' }}>
+                          <button onClick={() => { setEditingClientId(c.id); setEditingClientName(c.name); }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center' }} title="Editar">
+                            <Edit2 size={14} />
+                          </button>
+                          <button onClick={() => handleDeleteClient(c.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center' }} title="Excluir">
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
                 </div>
               </div>
 
-              {/* Form Create User & User List */}
+              {/* Form Create/Edit User & User List */}
               <div className="panel-card" style={{ gap: '28px' }}>
                 <div>
-                  <span className="panel-card-title">Novo Login de Acesso</span>
-                  <p className="panel-card-subtitle" style={{ marginBottom: '16px' }}>Crie logins para que clientes consigam ver exclusivamente seus dados ou novos administradores.</p>
+                  <span className="panel-card-title">
+                    {editingUserId ? 'Editar Login de Acesso' : 'Novo Login de Acesso'}
+                  </span>
+                  <p className="panel-card-subtitle" style={{ marginBottom: '16px' }}>
+                    {editingUserId
+                      ? 'Edite os dados do login de acesso. Deixe a senha em branco se não desejar alterá-la.'
+                      : 'Crie logins para que clientes consigam ver exclusivamente seus dados ou novos administradores.'}
+                  </p>
                   
-                  <form onSubmit={handleCreateUser} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                  <form onSubmit={editingUserId ? handleUpdateUser : handleCreateUser} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                     <div className="form-group">
                       <label className="form-label">E-mail do Usuário</label>
                       <input
@@ -1948,31 +2154,31 @@ export default function App() {
                         className="form-input"
                         required
                         placeholder="Ex: fulano@empresa.com"
-                        value={newUserEmail}
-                        onChange={(e) => setNewUserEmail(e.target.value)}
+                        value={editingUserId ? editingUserEmail : newUserEmail}
+                        onChange={(e) => editingUserId ? setEditingUserEmail(e.target.value) : setNewUserEmail(e.target.value)}
                       />
                     </div>
                     <div className="form-group">
-                      <label className="form-label">Senha</label>
+                      <label className="form-label">Senha {editingUserId && '(Deixe em branco para não alterar)'}</label>
                       <input
                         type="password"
                         className="form-input"
-                        required
-                        placeholder="Senha provisória"
-                        value={newUserPassword}
-                        onChange={(e) => setNewUserPassword(e.target.value)}
+                        required={!editingUserId}
+                        placeholder={editingUserId ? 'Nova senha opcional' : 'Senha provisória'}
+                        value={editingUserId ? editingUserPassword : newUserPassword}
+                        onChange={(e) => editingUserId ? setEditingUserPassword(e.target.value) : setNewUserPassword(e.target.value)}
                       />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Nível de Acesso (Cargo)</label>
-                      <select className="date-selector" style={{ width: '100%' }} value={newUserRole} onChange={(e) => setNewUserRole(e.target.value as any)}>
+                      <select className="date-selector" style={{ width: '100%' }} value={editingUserId ? editingUserRole : newUserRole} onChange={(e) => editingUserId ? setEditingUserRole(e.target.value as any) : setNewUserRole(e.target.value as any)}>
                         <option value="client">Cliente Comum (Isolado)</option>
                         <option value="admin">Administrador Master (Total)</option>
                       </select>
                     </div>
                     <div className="form-group">
                       <label className="form-label">Empresa Vinculada (Necessário para Cliente)</label>
-                      <select className="date-selector" style={{ width: '100%' }} disabled={newUserRole === 'admin'} value={newUserClientId} onChange={(e) => setNewUserClientId(e.target.value)}>
+                      <select className="date-selector" style={{ width: '100%' }} disabled={(editingUserId ? editingUserRole : newUserRole) === 'admin'} value={editingUserId ? editingUserClientId : newUserClientId} onChange={(e) => editingUserId ? setEditingUserClientId(e.target.value) : setNewUserClientId(e.target.value)}>
                         <option value="">Selecione a Empresa...</option>
                         {clients.map(c => (
                           <option key={c.id} value={c.id}>{c.name}</option>
@@ -1980,10 +2186,17 @@ export default function App() {
                       </select>
                     </div>
                     
-                    <button type="submit" className="control-btn control-btn-primary" style={{ gridColumn: 'span 2', padding: '12px', justifyContent: 'center', marginTop: '4px' }}>
-                      <Plus size={16} />
-                      <span>Criar Login do Usuário</span>
-                    </button>
+                    <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', marginTop: '4px' }}>
+                      <button type="submit" className="control-btn control-btn-primary" style={{ padding: '12px', justifyContent: 'center', flex: 1 }}>
+                        {editingUserId ? <CheckCircle2 size={16} /> : <Plus size={16} />}
+                        <span>{editingUserId ? 'Salvar Alterações' : 'Criar Login do Usuário'}</span>
+                      </button>
+                      {editingUserId && (
+                        <button type="button" className="control-btn" style={{ padding: '12px', justifyContent: 'center', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)' }} onClick={() => { setEditingUserId(null); setEditingUserEmail(''); setEditingUserPassword(''); }}>
+                          <X size={16} />
+                        </button>
+                      )}
+                    </div>
                   </form>
                 </div>
 
@@ -1997,6 +2210,7 @@ export default function App() {
                           <th>Cargo</th>
                           <th>Empresa Associada</th>
                           <th>Criado Em</th>
+                          <th style={{ textAlign: 'right' }}>Ações</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -2015,6 +2229,24 @@ export default function App() {
                             </td>
                             <td style={{ color: 'var(--text-muted)' }}>
                               {new Date(u.created_at).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td style={{ textAlign: 'right' }}>
+                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                                <button onClick={() => {
+                                  setEditingUserId(u.id);
+                                  setEditingUserEmail(u.email);
+                                  setEditingUserRole(u.role as any);
+                                  setEditingUserClientId(u.client_id || '');
+                                  setEditingUserPassword('');
+                                }} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center' }} title="Editar">
+                                  <Edit2 size={14} />
+                                </button>
+                                {u.id !== currentUser?.id && (
+                                  <button onClick={() => handleDeleteUser(u.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center' }} title="Excluir">
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           </tr>
                         ))}

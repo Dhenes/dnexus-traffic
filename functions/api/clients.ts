@@ -74,3 +74,84 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     });
   }
 };
+
+export const onRequestPut: PagesFunction<Env> = async (context) => {
+  try {
+    const secret = context.env.JWT_SECRET || DEFAULT_SECRET;
+    const authUser = await getAuthUser(context.request, secret);
+
+    if (!authUser || authUser.role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Acesso negado' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const body: any = await context.request.json();
+    const { id, name } = body;
+
+    if (!id || !name || !name.trim()) {
+      return new Response(JSON.stringify({ error: 'ID e nome são obrigatórios' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    await context.env.DB.prepare(
+      'UPDATE clients SET name = ? WHERE id = ?'
+    ).bind(name.trim(), id).run();
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+};
+
+export const onRequestDelete: PagesFunction<Env> = async (context) => {
+  try {
+    const secret = context.env.JWT_SECRET || DEFAULT_SECRET;
+    const authUser = await getAuthUser(context.request, secret);
+
+    if (!authUser || authUser.role !== 'admin') {
+      return new Response(JSON.stringify({ error: 'Acesso negado' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    const url = new URL(context.request.url);
+    const id = url.searchParams.get('id');
+
+    if (!id) {
+      return new Response(JSON.stringify({ error: 'ID do cliente é obrigatório' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Deletar em cascata todos os dados associados a este cliente
+    const db = context.env.DB;
+    await db.batch([
+      db.prepare('DELETE FROM ad_credentials WHERE client_id = ?').bind(id),
+      db.prepare('DELETE FROM meta_daily_metrics WHERE client_id = ?').bind(id),
+      db.prepare('DELETE FROM google_daily_metrics WHERE client_id = ?').bind(id),
+      db.prepare('DELETE FROM tiktok_daily_metrics WHERE client_id = ?').bind(id),
+      db.prepare('DELETE FROM users WHERE client_id = ?').bind(id),
+      db.prepare('DELETE FROM clients WHERE id = ?').bind(id)
+    ]);
+
+    return new Response(JSON.stringify({ success: true }), {
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (error: any) {
+    return new Response(JSON.stringify({ error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+};
