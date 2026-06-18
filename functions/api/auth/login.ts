@@ -23,7 +23,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // Consultar usuário no D1 (por e-mail ou nome de usuário)
     const userRow: any = await context.env.DB.prepare(`
-      SELECT id, email, password_hash, role
+      SELECT id, email, username, password_hash, role
       FROM users
       WHERE email = ? OR username = ?
     `).bind(email.toLowerCase().trim(), email.toLowerCase().trim()).first();
@@ -77,6 +77,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       user: {
         id: userRow.id,
         email: userRow.email,
+        username: userRow.username || '',
         role: userRow.role,
         clients: userClients,
         clientId: userClients[0]?.id || '',

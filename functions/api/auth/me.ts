@@ -21,7 +21,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     // Buscar informações atualizadas do usuário no D1
     const userRow: any = await context.env.DB.prepare(`
-      SELECT id, email, role
+      SELECT id, email, username, role
       FROM users
       WHERE id = ?
     `).bind(authUser.userId).first();
@@ -55,6 +55,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       user: {
         id: userRow.id,
         email: userRow.email,
+        username: userRow.username || '',
         role: userRow.role,
         clients: userClients,
         clientId: userClients[0]?.id || '',

@@ -120,6 +120,7 @@ interface AuthUser {
   role: 'admin' | 'client';
   clientId: string;
   clientName: string;
+  username?: string;
   clients?: Client[];
 }
 
@@ -356,6 +357,13 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
+  // Persist selectedClientId to localStorage per user when it changes
+  useEffect(() => {
+    if (currentUser && selectedClientId) {
+      localStorage.setItem(`dnexus_last_client_${currentUser.id}`, selectedClientId);
+    }
+  }, [selectedClientId, currentUser]);
+
   // Close custom client dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -385,8 +393,20 @@ export default function App() {
           if (meRes.ok) {
             const data = await meRes.json();
             setCurrentUser(data.user);
-            if (data.user.role === 'client') {
-              setSelectedClientId(data.user.clientId || (data.user.clients && data.user.clients[0]?.id) || '');
+            setActiveTab('overview');
+            
+            const savedClient = localStorage.getItem(`dnexus_last_client_${data.user.id}`);
+            if (data.user.role === 'admin') {
+              if (savedClient) {
+                setSelectedClientId(savedClient);
+              }
+            } else {
+              const clientExists = data.user.clients?.some((c: any) => c.id === savedClient);
+              if (savedClient && clientExists) {
+                setSelectedClientId(savedClient);
+              } else {
+                setSelectedClientId(data.user.clientId || (data.user.clients && data.user.clients[0]?.id) || '');
+              }
             }
             setIsSandbox(false);
             showToast(`Sessão restaurada para: ${data.user.email}`, 'success');
@@ -427,20 +447,23 @@ export default function App() {
       setTimeout(() => {
         let mockUser: AuthUser;
         const normalizedEmail = loginEmail.includes('@') ? loginEmail : `${loginEmail}@dnexus.com`;
+        const uName = loginEmail.split('@')[0];
         if (loginEmail.toLowerCase().includes('admin')) {
           mockUser = {
             id: 'u_admin',
             email: normalizedEmail,
             role: 'admin',
             clientId: '',
-            clientName: ''
+            clientName: '',
+            username: uName
           };
           // Set up mock clients
           setClients([
             { id: 'c_alfa', name: 'Cliente Alfa (Varejo)', created_at: Date.now() },
             { id: 'c_beta', name: 'Cliente Beta (SaaS)', created_at: Date.now() }
           ]);
-          setSelectedClientId('c_alfa');
+          const savedClient = localStorage.getItem(`dnexus_last_client_${mockUser.id}`);
+          setSelectedClientId(savedClient || 'c_alfa');
         } else {
           mockUser = {
             id: 'u_client',
@@ -448,15 +471,19 @@ export default function App() {
             role: 'client',
             clientId: 'c_alfa',
             clientName: 'Cliente Alfa (Varejo)',
+            username: uName,
             clients: [
               { id: 'c_alfa', name: 'Cliente Alfa (Varejo)', created_at: Date.now() },
               { id: 'c_beta', name: 'Cliente Beta (SaaS)', created_at: Date.now() }
             ]
           };
-          setSelectedClientId('c_alfa');
+          const savedClient = localStorage.getItem(`dnexus_last_client_${mockUser.id}`);
+          const clientExists = mockUser.clients?.some((c) => c.id === savedClient);
+          setSelectedClientId(clientExists && savedClient ? savedClient : 'c_alfa');
         }
 
         setCurrentUser(mockUser);
+        setActiveTab('overview');
         setToken('sandbox_token_jwt');
         localStorage.setItem('dnexus_token', 'sandbox_token_jwt');
         setLoading(false);
@@ -475,8 +502,18 @@ export default function App() {
           setToken(data.token);
           localStorage.setItem('dnexus_token', data.token);
           setCurrentUser(data.user);
-          if (data.user.role === 'client') {
-            setSelectedClientId(data.user.clientId || (data.user.clients && data.user.clients[0]?.id) || '');
+          setActiveTab('overview');
+          
+          const savedClient = localStorage.getItem(`dnexus_last_client_${data.user.id}`);
+          if (data.user.role === 'admin') {
+            if (savedClient) setSelectedClientId(savedClient);
+          } else {
+            const clientExists = data.user.clients?.some((c: any) => c.id === savedClient);
+            if (savedClient && clientExists) {
+              setSelectedClientId(savedClient);
+            } else {
+              setSelectedClientId(data.user.clientId || (data.user.clients && data.user.clients[0]?.id) || '');
+            }
           }
           showToast('Login efetuado com sucesso!', 'success');
         } else {
@@ -1394,7 +1431,7 @@ export default function App() {
             </div>
             <div style={{ flex: 1, overflow: 'hidden' }}>
               <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
-                {currentUser.role === 'admin' ? 'Admin Master' : currentUser.clientName}
+                {currentUser.role === 'admin' ? (currentUser.username || 'Admin Master') : (currentUser.username || currentUser.clientName)}
               </div>
               <div style={{ fontSize: '11px', color: 'var(--text-muted)', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
                 {currentUser.email}
