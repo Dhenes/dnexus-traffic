@@ -150,6 +150,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           `&level=ad` +
           `&time_increment=1` +
           `&date_preset=last_30d` +
+          `&limit=500` +
           `&access_token=${accessToken}`;
 
         const metaRes = await fetch(metaApiUrl);
@@ -219,7 +220,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const comments = getActionValue(item.actions, ['comment']);
           const saves = getActionValue(item.actions, ['post_save', 'onsite_conversion.post_save']);
           const shares = getActionValue(item.actions, ['post_share', 'share', 'onsite_conversion.post_share']);
-          const instagramFollowers = getActionValue(item.actions, ['instagram_profile_follows', 'onsite_conversion.instagram_profile_follows']);
+          const instagramFollowers = getActionValue(item.actions, [
+            'instagram_profile_follows',
+            'onsite_conversion.instagram_profile_follows',
+            'instagram_profile_followers',
+            'onsite_conversion.instagram_profile_followers',
+            'instagram_follows',
+            'onsite_conversion.instagram_follows'
+          ]);
 
           const linkClicks = getActionValue(item.actions, ['link_click']);
           const checkoutsInitiated = getActionValue(item.actions, ['initiate_checkout']);

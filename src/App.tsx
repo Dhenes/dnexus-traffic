@@ -2142,10 +2142,10 @@ export default function App() {
                                         <img 
                                           src={m.ad_thumbnail_url} 
                                           alt="Ad" 
-                                          style={{ width: '36px', height: '36px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }} 
+                                          style={{ width: '60px', height: '90px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }} 
                                         />
                                       ) : (
-                                        <div style={{ width: '36px', height: '36px', borderRadius: '4px', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)' }} />
+                                        <div style={{ width: '60px', height: '90px', borderRadius: '4px', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)' }} />
                                       )}
                                       {m.ad_preview_url && (
                                         <a 
