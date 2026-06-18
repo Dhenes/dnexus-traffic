@@ -1,0 +1,9 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "traffic-dashboard"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "traffic_db"
+database_id = "ba3e4e30-c798-40ff-a29b-a253e44376d5"
+migrations_dir = "migrations"
