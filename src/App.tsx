@@ -272,6 +272,8 @@ export default function App() {
   const [showEditingUserPassword, setShowEditingUserPassword] = useState(false);
   const [searchDropdownOpen, setSearchDropdownOpen] = useState(false);
   const [clientSearchQuery, setClientSearchQuery] = useState('');
+  const [userClientsDropdownOpen, setUserClientsDropdownOpen] = useState(false);
+  const [userClientsSearchQuery, setUserClientsSearchQuery] = useState('');
 
   // Raw DB data state
   const [dbData, setDbData] = useState<{
@@ -314,14 +316,17 @@ export default function App() {
       if (!target.closest('.custom-search-dropdown')) {
         setSearchDropdownOpen(false);
       }
+      if (!target.closest('.custom-user-clients-dropdown')) {
+        setUserClientsDropdownOpen(false);
+      }
     };
-    if (searchDropdownOpen) {
+    if (searchDropdownOpen || userClientsDropdownOpen) {
       document.addEventListener('mousedown', handleClickOutside);
     }
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [searchDropdownOpen]);
+  }, [searchDropdownOpen, userClientsDropdownOpen]);
 
   // Check backend server and session on mount
   useEffect(() => {
@@ -2506,50 +2511,163 @@ export default function App() {
                       </select>
                     </div>
                     <div className="form-group" style={{ gridColumn: 'span 2' }}>
-                      <label className="form-label">Empresas Vinculadas (Selecione uma ou mais para Cliente)</label>
-                      <div style={{
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: '8px',
-                        maxHeight: '150px',
-                        overflowY: 'auto',
-                        border: '1px solid var(--border-color)',
-                        padding: '12px',
-                        borderRadius: '8px',
-                        opacity: ((editingUserId ? editingUserRole : newUserRole) === 'admin') ? 0.5 : 1,
-                        pointerEvents: ((editingUserId ? editingUserRole : newUserRole) === 'admin') ? 'none' : 'auto',
-                        backgroundColor: 'rgba(255,255,255,0.02)'
-                      }}>
-                        {clients.map(c => {
-                          const isChecked = editingUserId 
-                            ? editingUserClientIds.includes(c.id) 
-                            : newUserClientIds.includes(c.id);
-                          return (
-                            <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px' }}>
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) => {
-                                  if (editingUserId) {
-                                    if (e.target.checked) {
-                                      setEditingUserClientIds([...editingUserClientIds, c.id]);
-                                    } else {
-                                      setEditingUserClientIds(editingUserClientIds.filter(id => id !== c.id));
-                                    }
-                                  } else {
-                                    if (e.target.checked) {
-                                      setNewUserClientIds([...newUserClientIds, c.id]);
-                                    } else {
-                                      setNewUserClientIds(newUserClientIds.filter(id => id !== c.id));
-                                    }
-                                  }
-                                }}
-                              />
-                              <span>{c.name}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                      <label className="form-label">Empresas Vinculadas (Selecione para Cliente)</label>
+                      
+                      {(() => {
+                        const isFieldDisabled = (editingUserId ? editingUserRole : newUserRole) === 'admin';
+                        const selectedIds = editingUserId ? editingUserClientIds : newUserClientIds;
+                        
+                        const selectedNames = clients
+                          .filter(c => selectedIds.includes(c.id))
+                          .map(c => c.name);
+                        
+                        const triggerText = selectedNames.length > 0 
+                          ? selectedNames.join(', ') 
+                          : 'Selecionar empresas...';
+
+                        const filteredClients = clients.filter(c => 
+                          c.name.toLowerCase().includes(userClientsSearchQuery.toLowerCase())
+                        );
+
+                        return (
+                          <div className="custom-user-clients-dropdown" style={{ 
+                            position: 'relative',
+                            opacity: isFieldDisabled ? 0.5 : 1,
+                            pointerEvents: isFieldDisabled ? 'none' : 'auto'
+                          }}>
+                            <div 
+                              className="date-selector" 
+                              style={{ 
+                                border: '1px solid var(--border-color)', 
+                                width: '100%', 
+                                justifyContent: 'space-between',
+                                cursor: 'pointer',
+                                padding: '10px 14px'
+                              }}
+                              onClick={() => setUserClientsDropdownOpen(!userClientsDropdownOpen)}
+                            >
+                              <span style={{ 
+                                whiteSpace: 'nowrap', 
+                                overflow: 'hidden', 
+                                textOverflow: 'ellipsis', 
+                                maxWidth: '300px',
+                                fontSize: '13px',
+                                color: selectedNames.length > 0 ? 'var(--text-primary)' : 'var(--text-muted)'
+                              }}>
+                                {triggerText}
+                              </span>
+                              <ChevronDown size={16} style={{ flexShrink: 0 }} />
+                            </div>
+
+                            {userClientsDropdownOpen && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '100%',
+                                left: 0,
+                                right: 0,
+                                marginTop: '8px',
+                                backgroundColor: '#0f131c',
+                                border: '1px solid var(--border-color)',
+                                borderRadius: '12px',
+                                boxShadow: 'var(--shadow-lg)',
+                                zIndex: 1000,
+                                padding: '8px',
+                                display: 'flex',
+                                flexDirection: 'column',
+                                gap: '8px'
+                              }}>
+                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                  <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-muted)' }} />
+                                  <input
+                                    type="text"
+                                    placeholder="Buscar empresa..."
+                                    value={userClientsSearchQuery}
+                                    onChange={(e) => setUserClientsSearchQuery(e.target.value)}
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      width: '100%',
+                                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                                      border: '1px solid var(--border-color)',
+                                      borderRadius: '8px',
+                                      color: 'var(--text-primary)',
+                                      padding: '8px 12px 8px 30px',
+                                      fontSize: '13px',
+                                      outline: 'none'
+                                    }}
+                                  />
+                                </div>
+                                
+                                <div style={{
+                                  maxHeight: '180px',
+                                  overflowY: 'auto',
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '4px'
+                                }}>
+                                  {filteredClients.map((c) => {
+                                    const isChecked = selectedIds.includes(c.id);
+                                    return (
+                                      <label 
+                                        key={c.id} 
+                                        style={{ 
+                                          display: 'flex', 
+                                          alignItems: 'center', 
+                                          gap: '10px', 
+                                          cursor: 'pointer', 
+                                          fontSize: '13px',
+                                          padding: '8px 12px',
+                                          borderRadius: '6px',
+                                          transition: 'background var(--transition-fast)',
+                                          backgroundColor: isChecked ? 'rgba(99, 102, 241, 0.05)' : 'transparent'
+                                        }}
+                                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(255, 255, 255, 0.05)'}
+                                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = isChecked ? 'rgba(99, 102, 241, 0.05)' : 'transparent'}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={isChecked}
+                                          onChange={(e) => {
+                                            if (editingUserId) {
+                                              if (e.target.checked) {
+                                                setEditingUserClientIds([...editingUserClientIds, c.id]);
+                                              } else {
+                                                setEditingUserClientIds(editingUserClientIds.filter(id => id !== c.id));
+                                              }
+                                            } else {
+                                              if (e.target.checked) {
+                                                setNewUserClientIds([...newUserClientIds, c.id]);
+                                              } else {
+                                                setNewUserClientIds(newUserClientIds.filter(id => id !== c.id));
+                                              }
+                                            }
+                                          }}
+                                          style={{ cursor: 'pointer' }}
+                                        />
+                                        <span style={{ 
+                                          color: isChecked ? 'var(--text-primary)' : 'var(--text-secondary)',
+                                          whiteSpace: 'nowrap',
+                                          overflow: 'hidden',
+                                          textOverflow: 'ellipsis'
+                                        }}>{c.name}</span>
+                                      </label>
+                                    );
+                                  })}
+                                  {filteredClients.length === 0 && (
+                                    <div style={{
+                                      padding: '8px 12px',
+                                      fontSize: '13px',
+                                      color: 'var(--text-muted)',
+                                      textAlign: 'center'
+                                    }}>
+                                      Nenhuma empresa encontrada
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                     
                     <div style={{ gridColumn: 'span 2', display: 'flex', gap: '8px', marginTop: '4px' }}>
