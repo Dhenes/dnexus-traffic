@@ -1128,6 +1128,11 @@ export default function App() {
   const tiktokClicks = filteredTiktok.reduce((acc, curr) => acc + curr.clicks, 0);
   const tiktokConversions = filteredTiktok.reduce((acc, curr) => acc + curr.conversion, 0);
 
+  const renderSortIndicator = (field: string) => {
+    if (metaSortField !== field) return <span style={{ opacity: 0.3, marginLeft: '4px', fontSize: '10px' }}>↕</span>;
+    return <span style={{ color: 'var(--color-primary)', marginLeft: '4px', fontSize: '10px' }}>{metaSortDirection === 'asc' ? '▲' : '▼'}</span>;
+  };
+
   const handleMetaSort = (field: string) => {
     if (metaSortField === field) {
       setMetaSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
@@ -1137,12 +1142,57 @@ export default function App() {
     }
   };
 
-  const renderSortIndicator = (field: string) => {
-    if (metaSortField !== field) return <span style={{ opacity: 0.3, marginLeft: '4px', fontSize: '10px' }}>↕</span>;
-    return <span style={{ color: 'var(--color-primary)', marginLeft: '4px', fontSize: '10px' }}>{metaSortDirection === 'asc' ? '▲' : '▼'}</span>;
-  };
+  // Group filteredMeta by ad_name to present one row per unique ad name in the table
+  const groupedMetaMap: { [adName: string]: MetaMetric } = {};
+  filteredMeta.forEach((item) => {
+    const key = item.ad_name || item.ad_id || 'Sem Nome';
+    if (!groupedMetaMap[key]) {
+      groupedMetaMap[key] = {
+        ...item,
+        reach: 0,
+        impressions: 0,
+        clicks: 0,
+        spend: 0,
+        thruplays: 0,
+        video_plays: 0,
+        video_3_sec_views: 0,
+        video_2_sec_continuous_views: 0,
+        video_15_sec_views: 0,
+        instagram_followers: 0,
+        instagram_profile_visits: 0,
+        link_clicks: 0,
+        checkouts_initiated: 0,
+        leads: 0,
+        new_messaging_connections: 0,
+        purchases: 0,
+        purchases_conversion_value: 0
+      };
+    }
+    const group = groupedMetaMap[key];
+    group.reach += item.reach || 0;
+    group.impressions += item.impressions || 0;
+    group.clicks += item.clicks || 0;
+    group.spend += item.spend || 0;
+    group.thruplays = (group.thruplays || 0) + (item.thruplays || 0);
+    group.video_plays = (group.video_plays || 0) + (item.video_plays || 0);
+    group.video_3_sec_views = (group.video_3_sec_views || 0) + (item.video_3_sec_views || 0);
+    group.video_2_sec_continuous_views = (group.video_2_sec_continuous_views || 0) + (item.video_2_sec_continuous_views || 0);
+    group.video_15_sec_views = (group.video_15_sec_views || 0) + (item.video_15_sec_views || 0);
+    group.instagram_followers = (group.instagram_followers || 0) + (item.instagram_followers || 0);
+    group.instagram_profile_visits = (group.instagram_profile_visits || 0) + (item.instagram_profile_visits || 0);
+    group.link_clicks = (group.link_clicks || 0) + (item.link_clicks || 0);
+    group.checkouts_initiated = (group.checkouts_initiated || 0) + (item.checkouts_initiated || 0);
+    group.leads = (group.leads || 0) + (item.leads || 0);
+    group.new_messaging_connections = (group.new_messaging_connections || 0) + (item.new_messaging_connections || 0);
+    group.purchases = (group.purchases || 0) + (item.purchases || 0);
+    group.purchases_conversion_value = (group.purchases_conversion_value || 0) + (item.purchases_conversion_value || 0);
 
-  const sortedMetaForTable = [...filteredMeta].sort((a, b) => {
+    if (!group.ad_thumbnail_url && item.ad_thumbnail_url) group.ad_thumbnail_url = item.ad_thumbnail_url;
+    if (!group.ad_preview_url && item.ad_preview_url) group.ad_preview_url = item.ad_preview_url;
+  });
+  const groupedMetaList = Object.values(groupedMetaMap);
+
+  const sortedMetaForTable = [...groupedMetaList].sort((a, b) => {
     let aVal: any = a[metaSortField as keyof MetaMetric];
     let bVal: any = b[metaSortField as keyof MetaMetric];
 
