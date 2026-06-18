@@ -68,7 +68,20 @@ interface MetaMetric {
   impressions: number;
   clicks: number;
   spend: number;
-  conversions_actions: number;
+  ad_id?: string;
+  ad_name?: string;
+  adset_name?: string;
+  link_clicks?: number;
+  checkouts_initiated?: number;
+  leads?: number;
+  new_messaging_connections?: number;
+  purchases?: number;
+  purchases_conversion_value?: number;
+  video_plays?: number;
+  video_3_sec_views?: number;
+  video_2_sec_continuous_views?: number;
+  video_15_sec_views?: number;
+  thruplays?: number;
 }
 
 interface GoogleMetric {
@@ -160,22 +173,56 @@ const generateMockData = (clientId: string) => {
     const dateStr = d.toISOString().split('T')[0];
 
     campaignsMeta.forEach((c) => {
-      const rand = (Math.sin(i * 0.5) * 0.2 + 1) * scale;
-      const reach = Math.round((5000 + Math.random() * 2000) * rand);
-      const impressions = Math.round(reach * (1.1 + Math.random() * 0.2));
-      const clicks = Math.round(impressions * (0.015 + Math.random() * 0.01));
-      const spend = parseFloat(((150 + Math.random() * 80) * rand).toFixed(2));
-      const conversions_actions = Math.round(clicks * (0.05 + Math.random() * 0.04));
-      meta.push({
-        id: `${clientId}_meta_${c.id}_${dateStr}`,
-        date: dateStr,
-        campaign_id: c.id,
-        campaign_name: c.name,
-        reach,
-        impressions,
-        clicks,
-        spend,
-        conversions_actions
+      const ads = [
+        { id: `ad_${c.id}_1`, name: `Anúncio Imagem_${c.name}` },
+        { id: `ad_${c.id}_2`, name: `Anúncio Vídeo_${c.name}` }
+      ];
+
+      ads.forEach((ad) => {
+        const rand = (Math.sin(i * 0.5) * 0.2 + 1) * scale * 0.5;
+        const reach = Math.round((2500 + Math.random() * 1000) * rand);
+        const impressions = Math.round(reach * (1.1 + Math.random() * 0.2));
+        const clicks = Math.round(impressions * (0.015 + Math.random() * 0.01));
+        const spend = parseFloat(((75 + Math.random() * 40) * rand).toFixed(2));
+        
+        const isVideo = ad.id.includes('Vídeo') || ad.id.includes('_2');
+        const purchases = Math.round(clicks * (0.02 + Math.random() * 0.02));
+        const leads = Math.round(clicks * (0.03 + Math.random() * 0.03));
+        const linkClicks = Math.round(clicks * 0.85);
+        const checkoutsInitiated = Math.round(clicks * 0.15);
+        const newMessagingConnections = Math.round(clicks * 0.05);
+        const purchasesConversionValue = parseFloat((purchases * (60 + Math.random() * 40)).toFixed(2));
+        
+        const videoPlays = isVideo ? Math.round(impressions * 0.65) : 0;
+        const video3SecViews = isVideo ? Math.round(videoPlays * 0.8) : 0;
+        const video2SecContinuousViews = isVideo ? Math.round(videoPlays * 0.5) : 0;
+        const video15SecViews = isVideo ? Math.round(videoPlays * 0.2) : 0;
+        const thruplays = isVideo ? video15SecViews : 0;
+
+        meta.push({
+          id: `${clientId}_meta_${ad.id}_${dateStr}`,
+          date: dateStr,
+          campaign_id: c.id,
+          campaign_name: c.name,
+          ad_id: ad.id,
+          ad_name: ad.name,
+          adset_name: `Conjunto_${c.name}`,
+          reach,
+          impressions,
+          clicks,
+          spend,
+          link_clicks: linkClicks,
+          checkouts_initiated: checkoutsInitiated,
+          leads,
+          new_messaging_connections: newMessagingConnections,
+          purchases,
+          purchases_conversion_value: purchasesConversionValue,
+          video_plays: videoPlays,
+          video_3_sec_views: video3SecViews,
+          video_2_sec_continuous_views: video2SecContinuousViews,
+          video_15_sec_views: video15SecViews,
+          thruplays
+        });
       });
     });
 
@@ -1004,7 +1051,7 @@ export default function App() {
   const metaSpend = filteredMeta.reduce((acc, curr) => acc + curr.spend, 0);
   const metaImpressions = filteredMeta.reduce((acc, curr) => acc + curr.impressions, 0);
   const metaClicks = filteredMeta.reduce((acc, curr) => acc + curr.clicks, 0);
-  const metaConversions = filteredMeta.reduce((acc, curr) => acc + curr.conversions_actions, 0);
+  const metaConversions = filteredMeta.reduce((acc, curr) => acc + (curr.purchases || 0) + (curr.leads || 0), 0);
 
   const googleSpend = filteredGoogle.reduce((acc, curr) => acc + curr.cost, 0);
   const googleImpressions = filteredGoogle.reduce((acc, curr) => acc + curr.impressions, 0);
@@ -1041,7 +1088,7 @@ export default function App() {
     filteredMeta.forEach((m) => {
       if (!dailyMap[m.date]) dailyMap[m.date] = { date: m.date, spend: 0, conversions: 0, clicks: 0 };
       dailyMap[m.date].spend += m.spend;
-      dailyMap[m.date].conversions += m.conversions_actions;
+      dailyMap[m.date].conversions += (m.purchases || 0) + (m.leads || 0);
       dailyMap[m.date].clicks += m.clicks;
     });
 
@@ -1074,7 +1121,7 @@ export default function App() {
       metaCampMap[m.campaign_name].spend += m.spend;
       metaCampMap[m.campaign_name].clicks += m.clicks;
       metaCampMap[m.campaign_name].impressions += m.impressions;
-      metaCampMap[m.campaign_name].conversions += m.conversions_actions;
+      metaCampMap[m.campaign_name].conversions += (m.purchases || 0) + (m.leads || 0);
     });
     Object.entries(metaCampMap).forEach(([name, s]) => {
       list.push({
@@ -1867,35 +1914,54 @@ export default function App() {
                 {/* Detailed Table */}
                 <div className="panel-card">
                   <div className="panel-card-header">
-                    <span className="panel-card-title">Métricas de Campanha Real (Meta Nomenclaturas)</span>
+                    <span className="panel-card-title">Métricas de Anúncio Real (Meta Nomenclaturas)</span>
                   </div>
                   <div className="table-wrapper">
                     <table className="custom-table">
                       <thead>
                         <tr>
-                          <th>ID da Campanha</th>
-                          <th>Nome da Campanha</th>
+                          <th>ID do Anúncio</th>
+                          <th>Nome do Anúncio</th>
+                          <th>Conjunto de Anúncios</th>
+                          <th>Campanha</th>
                           <th>Alcance (Reach)</th>
                           <th>Impressões</th>
-                          <th>Cliques</th>
-                          <th>Valor Gasto (Spend)</th>
-                          <th>Ações Totais</th>
-                          <th>CPA</th>
+                          <th>Cliques no Link</th>
+                          <th>Valor Gasto</th>
+                          <th>Checkouts Iniciados</th>
+                          <th>Leads</th>
+                          <th>Compras</th>
+                          <th>Valor de Compras</th>
+                          <th>Novas Conversas</th>
+                          <th>Reproduções de Vídeo</th>
+                          <th>Visualizações 3s</th>
+                          <th>Visualizações 2s Cont.</th>
+                          <th>Visualizações 15s</th>
+                          <th>ThruPlays</th>
                         </tr>
                       </thead>
                       <tbody>
                         {filteredMeta.slice(0, 15).map((m, idx) => {
-                          const cpa = m.conversions_actions > 0 ? m.spend / m.conversions_actions : 0;
                           return (
                             <tr key={idx}>
-                              <td>{m.campaign_id}</td>
-                              <td style={{ fontWeight: 600 }}>{m.campaign_name}</td>
-                              <td>{m.reach.toLocaleString('pt-BR')}</td>
-                              <td>{m.impressions.toLocaleString('pt-BR')}</td>
-                              <td>{m.clicks.toLocaleString('pt-BR')}</td>
-                              <td>R$ {m.spend.toLocaleString('pt-BR')}</td>
-                              <td>{m.conversions_actions}</td>
-                              <td>R$ {cpa.toFixed(2)}</td>
+                              <td>{m.ad_id || '-'}</td>
+                              <td style={{ fontWeight: 600 }}>{m.ad_name || '-'}</td>
+                              <td>{m.adset_name || '-'}</td>
+                              <td>{m.campaign_name || '-'}</td>
+                              <td>{(m.reach || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.impressions || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.link_clicks || 0).toLocaleString('pt-BR')}</td>
+                              <td>R$ {(m.spend || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                              <td>{(m.checkouts_initiated || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.leads || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.purchases || 0).toLocaleString('pt-BR')}</td>
+                              <td>R$ {(m.purchases_conversion_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                              <td>{(m.new_messaging_connections || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.video_plays || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.video_3_sec_views || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.video_2_sec_continuous_views || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.video_15_sec_views || 0).toLocaleString('pt-BR')}</td>
+                              <td>{(m.thruplays || 0).toLocaleString('pt-BR')}</td>
                             </tr>
                           );
                         })}

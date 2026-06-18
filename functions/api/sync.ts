@@ -142,11 +142,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const actId = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
         
         const metaApiUrl = `https://graph.facebook.com/v19.0/${actId}/insights` +
-          `?fields=campaign_id,campaign_name,reach,impressions,clicks,spend,actions,` +
-          `video_play_actions,video_avg_time_watched_actions,video_thruplay_watched_actions,` +
+          `?fields=campaign_id,campaign_name,ad_id,ad_name,adset_name,reach,impressions,clicks,spend,actions,action_values,` +
+          `video_play_actions,video_thruplay_watched_actions,video_3_sec_watched_actions,` +
+          `video_continuous_2_sec_watched_actions,video_15_sec_watched_actions,` +
           `video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,` +
           `video_p95_watched_actions,video_p100_watched_actions` +
-          `&level=campaign` +
+          `&level=ad` +
           `&time_increment=1` +
           `&date_preset=last_30d` +
           `&access_token=${accessToken}`;
@@ -163,30 +164,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
         insights.forEach((item: any) => {
           const dateStr = item.date_start;
+          const adId = item.ad_id || '';
+          const adName = item.ad_name || '';
+          const adsetName = item.adset_name || '';
           const campaignId = item.campaign_id;
           const campaignName = item.campaign_name;
           const reach = parseInt(item.reach || '0', 10);
           const impressions = parseInt(item.impressions || '0', 10);
           const clicks = parseInt(item.clicks || '0', 10);
           const spend = parseFloat(item.spend || '0.0');
-          
-          let conversions = 0;
-          if (item.actions && Array.isArray(item.actions)) {
-            const conversionTypes = ['purchase', 'lead', 'complete_registration', 'onsite_conversion', 'submit_application'];
-            item.actions.forEach((act: any) => {
-              const isConv = conversionTypes.some(type => act.action_type.includes(type));
-              if (isConv) {
-                conversions += parseInt(act.value || '0', 10);
-              }
-            });
-            if (conversions === 0) {
-              conversions = item.actions.reduce((acc: number, act: any) => acc + parseInt(act.value || '0', 10), 0);
-            }
-          }
 
           const landingPageViews = getActionValue(item.actions, ['landing_page_view']);
           const videoViews = getActionValue(item.video_play_actions, ['video_play']) || getActionValue(item.actions, ['video_play', 'video_view']);
-          const videoPlayTime = getActionFloatValue(item.video_avg_time_watched_actions, ['video_play']);
           const thruplays = getActionValue(item.video_thruplay_watched_actions, ['video_play']);
           const videoP25 = getActionValue(item.video_p25_watched_actions, ['video_play']);
           const videoP50 = getActionValue(item.video_p50_watched_actions, ['video_play']);
@@ -199,49 +188,76 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const shares = getActionValue(item.actions, ['post_share', 'share', 'onsite_conversion.post_share']);
           const instagramFollowers = getActionValue(item.actions, ['instagram_profile_follows']);
 
-          const id = `${targetClientId}_meta_${campaignId}_${dateStr}`;
+          const linkClicks = getActionValue(item.actions, ['link_click']);
+          const checkoutsInitiated = getActionValue(item.actions, ['initiate_checkout']);
+          const leads = getActionValue(item.actions, ['lead']);
+          const newMessagingConnections = getActionValue(item.actions, ['new_thread']);
+          const purchases = getActionValue(item.actions, ['purchase']);
+          const purchasesConversionValue = getActionFloatValue(item.action_values, ['purchase']);
+          const videoPlays = getActionValue(item.video_play_actions, ['video_play']);
+          const video3SecViews = getActionValue(item.video_3_sec_watched_actions, ['video_view']);
+          const video2SecContinuousViews = getActionValue(item.video_continuous_2_sec_watched_actions, ['video_view']);
+          const video15SecViews = getActionValue(item.video_15_sec_watched_actions, ['video_view']);
+
+          const id = `${targetClientId}_meta_${adId}_${dateStr}`;
           
           batchStatements.push(
             context.env.DB.prepare(`
               INSERT INTO meta_daily_metrics (
-                id, client_id, date, campaign_id, campaign_name, reach, impressions, clicks, spend, conversions_actions, 
-                landing_page_views, video_views, video_play_time, thruplays, 
+                id, client_id, date, campaign_id, campaign_name, ad_id, ad_name, adset_name, reach, impressions, clicks, spend, 
+                landing_page_views, video_views, thruplays, 
                 video_p25_views, video_p50_views, video_p75_views, video_p95_views, video_p100_views, 
-                likes, comments, saves, shares, instagram_followers, updated_at
+                likes, comments, saves, shares, instagram_followers, 
+                link_clicks, checkouts_initiated, leads, new_messaging_connections, purchases, purchases_conversion_value, 
+                video_plays, video_3_sec_views, video_2_sec_continuous_views, video_15_sec_views, updated_at
               )
               VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 
-                ?11, ?12, ?13, ?14, 
-                ?15, ?16, ?17, ?18, ?19, 
-                ?20, ?21, ?22, ?23, ?24, ?25
+                ?11, ?12, ?13, ?14, ?15, 
+                ?16, ?17, ?18, ?19, ?20, 
+                ?21, ?22, ?23, ?24, ?25, 
+                ?26, ?27, ?28, ?29, ?30, ?31, 
+                ?32, ?33, ?34, ?35, ?36
               )
               ON CONFLICT(id) DO UPDATE SET
                 campaign_name = ?5,
-                reach = ?6,
-                impressions = ?7,
-                clicks = ?8,
-                spend = ?9,
-                conversions_actions = ?10,
-                landing_page_views = ?11,
-                video_views = ?12,
-                video_play_time = ?13,
-                thruplays = ?14,
-                video_p25_views = ?15,
-                video_p50_views = ?16,
-                video_p75_views = ?17,
-                video_p95_views = ?18,
-                video_p100_views = ?19,
-                likes = ?20,
-                comments = ?21,
-                saves = ?22,
-                shares = ?23,
-                instagram_followers = ?24,
-                updated_at = ?25
+                ad_name = ?7,
+                adset_name = ?8,
+                reach = ?9,
+                impressions = ?10,
+                clicks = ?11,
+                spend = ?12,
+                landing_page_views = ?13,
+                video_views = ?14,
+                thruplays = ?15,
+                video_p25_views = ?16,
+                video_p50_views = ?17,
+                video_p75_views = ?18,
+                video_p95_views = ?19,
+                video_p100_views = ?20,
+                likes = ?21,
+                comments = ?22,
+                saves = ?23,
+                shares = ?24,
+                instagram_followers = ?25,
+                link_clicks = ?26,
+                checkouts_initiated = ?27,
+                leads = ?28,
+                new_messaging_connections = ?29,
+                purchases = ?30,
+                purchases_conversion_value = ?31,
+                video_plays = ?32,
+                video_3_sec_views = ?33,
+                video_2_sec_continuous_views = ?34,
+                video_15_sec_views = ?35,
+                updated_at = ?36
             `).bind(
-              id, targetClientId, dateStr, campaignId, campaignName, reach, impressions, clicks, spend, conversions,
-              landingPageViews, videoViews, videoPlayTime, thruplays,
+              id, targetClientId, dateStr, campaignId, campaignName, adId, adName, adsetName, reach, impressions, clicks, spend,
+              landingPageViews, videoViews, thruplays,
               videoP25, videoP50, videoP75, videoP95, videoP100,
-              likes, comments, saves, shares, instagramFollowers, timestamp
+              likes, comments, saves, shares, instagramFollowers,
+              linkClicks, checkoutsInitiated, leads, newMessagingConnections, purchases, purchasesConversionValue,
+              videoPlays, video3SecViews, video2SecContinuousViews, video15SecViews, timestamp
             )
           );
         });
