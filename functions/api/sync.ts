@@ -143,8 +143,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         
         const metaApiUrl = `https://graph.facebook.com/v19.0/${actId}/insights` +
           `?fields=campaign_id,campaign_name,ad_id,ad_name,adset_name,reach,impressions,clicks,spend,actions,action_values,` +
-          `video_play_actions,video_thruplay_watched_actions,video_3_sec_watched_actions,` +
-          `video_continuous_2_sec_watched_actions,video_15_sec_watched_actions,` +
+          `video_play_actions,video_thruplay_watched_actions,` +
+          `video_continuous_2_sec_watched_actions,` +
           `video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,` +
           `video_p95_watched_actions,video_p100_watched_actions` +
           `&level=ad` +
@@ -228,9 +228,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const purchases = getActionValue(item.actions, ['purchase']);
           const purchasesConversionValue = getActionFloatValue(item.action_values, ['purchase']);
           const videoPlays = getActionValue(item.video_play_actions, ['video_play']);
-          const video3SecViews = getActionValue(item.video_3_sec_watched_actions, ['video_view']);
+          const video3SecViews = getActionValue(item.actions, ['video_view']);
           const video2SecContinuousViews = getActionValue(item.video_continuous_2_sec_watched_actions, ['video_view']);
-          const video15SecViews = getActionValue(item.video_15_sec_watched_actions, ['video_view']);
+          const video15SecViews = thruplays;
 
           // Obter mídias do mapa auxiliar
           const adMedia = adDetailsMap[adId] || { previewUrl: '', thumbnailUrl: '' };
