@@ -142,7 +142,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const actId = accountId.startsWith('act_') ? accountId : `act_${accountId}`;
         
         const metaApiUrl = `https://graph.facebook.com/v19.0/${actId}/insights` +
-          `?fields=campaign_id,campaign_name,ad_id,ad_name,adset_name,reach,impressions,clicks,spend,actions,action_values,` +
+          `?fields=campaign_id,campaign_name,ad_id,ad_name,adset_name,reach,impressions,clicks,spend,actions,action_values,instagram_profile_visits,` +
           `video_play_actions,video_thruplay_watched_actions,` +
           `video_continuous_2_sec_watched_actions,` +
           `video_p25_watched_actions,video_p50_watched_actions,video_p75_watched_actions,` +
@@ -167,13 +167,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const adIds = Array.from(new Set(insights.map((item: any) => item.ad_id).filter(Boolean))) as string[];
         const adDetailsMap: { [adId: string]: { previewUrl: string; thumbnailUrl: string } } = {};
 
-        // Fazer chamada secundária em lotes para recuperar links de prévia e imagens
         if (adIds.length > 0) {
+          const adToCreativeMap: { [adId: string]: { creativeId: string; previewUrl: string } } = {};
+          const creativeIds: string[] = [];
+
+          // Etapa 1: Buscar IDs dos creatives e links de prévia para os anúncios
           const chunkSize = 40;
           for (let i = 0; i < adIds.length; i += chunkSize) {
             const chunk = adIds.slice(i, i + chunkSize);
             const idsQuery = chunk.join(',');
-            const detailsUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{id,thumbnail_url,image_url}&access_token=${accessToken}`;
+            const detailsUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{id}&access_token=${accessToken}`;
             
             try {
               const detailsRes = await fetch(detailsUrl);
@@ -183,17 +186,60 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                   const adObj = detailsData[adId];
                   if (adObj) {
                     const previewUrl = adObj.preview_shareable_link || '';
-                    const thumbnailUrl = adObj.creative?.thumbnail_url || adObj.creative?.image_url || '';
-                    adDetailsMap[adId] = { previewUrl, thumbnailUrl };
+                    const creativeId = adObj.creative?.id || '';
+                    adToCreativeMap[adId] = { creativeId, previewUrl };
+                    if (creativeId) {
+                      creativeIds.push(creativeId);
+                    }
                   }
                 });
               } else {
-                console.error(`Erro ao buscar mídias dos anúncios da Meta: ${detailsRes.statusText}`);
+                console.error(`Erro ao buscar IDs das mídias da Meta: ${detailsRes.statusText}`);
               }
             } catch (err) {
-              console.error('Erro na chamada secundária de mídias dos anúncios da Meta', err);
+              console.error('Erro na chamada secundária de IDs de mídias da Meta', err);
             }
           }
+
+          // Etapa 2: Buscar imagens e miniaturas de alta resolução (320x568) para os creatives
+          const uniqueCreativeIds = Array.from(new Set(creativeIds)).filter(Boolean);
+          const creativeMediaMap: { [creativeId: string]: string } = {};
+
+          if (uniqueCreativeIds.length > 0) {
+            for (let i = 0; i < uniqueCreativeIds.length; i += chunkSize) {
+              const chunk = uniqueCreativeIds.slice(i, i + chunkSize);
+              const idsQuery = chunk.join(',');
+              const creativeUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=thumbnail_url,image_url&thumbnail_width=320&thumbnail_height=568&access_token=${accessToken}`;
+              
+              try {
+                const creativeRes = await fetch(creativeUrl);
+                if (creativeRes.ok) {
+                  const creativeData: any = await creativeRes.json();
+                  chunk.forEach((creativeId) => {
+                    const creativeObj = creativeData[creativeId];
+                    if (creativeObj) {
+                      const thumbnailUrl = creativeObj.thumbnail_url || creativeObj.image_url || '';
+                      creativeMediaMap[creativeId] = thumbnailUrl;
+                    }
+                  });
+                } else {
+                  console.error(`Erro ao buscar mídias de creatives da Meta: ${creativeRes.statusText}`);
+                }
+              } catch (err) {
+                console.error('Erro na chamada secundária de mídias de creatives da Meta', err);
+              }
+            }
+          }
+
+          // Mapear de volta para os Ads
+          adIds.forEach((adId) => {
+            const adInfo = adToCreativeMap[adId];
+            if (adInfo) {
+              const previewUrl = adInfo.previewUrl;
+              const thumbnailUrl = creativeMediaMap[adInfo.creativeId] || '';
+              adDetailsMap[adId] = { previewUrl, thumbnailUrl };
+            }
+          });
         }
 
         insights.forEach((item: any) => {
@@ -226,7 +272,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             'instagram_profile_followers',
             'onsite_conversion.instagram_profile_followers',
             'instagram_follows',
-            'onsite_conversion.instagram_follows'
+            'onsite_conversion.instagram_follows',
+            'instagram_ad_follows',
+            'instagram_ad_follow',
+            'onsite_conversion.instagram_ad_follows',
+            'onsite_conversion.instagram_ad_follow'
           ]);
 
           const linkClicks = getActionValue(item.actions, ['link_click']);
@@ -235,7 +285,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const newMessagingConnections = getActionValue(item.actions, ['new_thread']);
           const purchases = getActionValue(item.actions, ['purchase']);
           const purchasesConversionValue = getActionFloatValue(item.action_values, ['purchase']);
-          const videoPlays = getActionValue(item.video_play_actions, ['video_play', 'video_view']);
+          const videoPlays = getActionValue(item.video_play_actions, ['video_play', 'video_view']) || getActionValue(item.actions, ['video_play', 'video_view']);
           const video3SecViews = getActionValue(item.actions, ['video_view']);
           const video2SecContinuousViews = getActionValue(item.video_continuous_2_sec_watched_actions, ['video_play', 'video_view']);
           const video15SecViews = thruplays;
