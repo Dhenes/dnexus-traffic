@@ -24,7 +24,9 @@ import {
   Trash2,
   X,
   ChevronDown,
-  Search
+  Search,
+  Play,
+  UserPlus
 } from 'lucide-react';
 import {
   AreaChart,
@@ -82,6 +84,9 @@ interface MetaMetric {
   video_2_sec_continuous_views?: number;
   video_15_sec_views?: number;
   thruplays?: number;
+  ad_preview_url?: string;
+  ad_thumbnail_url?: string;
+  instagram_followers?: number;
 }
 
 interface GoogleMetric {
@@ -193,12 +198,17 @@ const generateMockData = (clientId: string) => {
         const checkoutsInitiated = Math.round(clicks * 0.15);
         const newMessagingConnections = Math.round(clicks * 0.05);
         const purchasesConversionValue = parseFloat((purchases * (60 + Math.random() * 40)).toFixed(2));
+        const instagramFollowers = Math.round(reach * (0.01 + Math.random() * 0.02));
         
         const videoPlays = isVideo ? Math.round(impressions * 0.65) : 0;
         const video3SecViews = isVideo ? Math.round(videoPlays * 0.8) : 0;
         const video2SecContinuousViews = isVideo ? Math.round(videoPlays * 0.5) : 0;
         const video15SecViews = isVideo ? Math.round(videoPlays * 0.2) : 0;
         const thruplays = isVideo ? video15SecViews : 0;
+
+        const thumbnail = isVideo 
+          ? 'https://images.unsplash.com/photo-1536240478700-b869070f9279?w=100&auto=format&fit=crop&q=60'
+          : 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=100&auto=format&fit=crop&q=60';
 
         meta.push({
           id: `${clientId}_meta_${ad.id}_${dateStr}`,
@@ -222,7 +232,10 @@ const generateMockData = (clientId: string) => {
           video_3_sec_views: video3SecViews,
           video_2_sec_continuous_views: video2SecContinuousViews,
           video_15_sec_views: video15SecViews,
-          thruplays
+          thruplays,
+          ad_preview_url: `https://facebook.com/ads/library/?id=${ad.id}`,
+          ad_thumbnail_url: thumbnail,
+          instagram_followers: instagramFollowers
         });
       });
     });
@@ -274,6 +287,7 @@ const generateMockData = (clientId: string) => {
 export default function App() {
   const [activeTab, setActiveTab] = useState<'overview' | 'meta' | 'google' | 'tiktok' | 'settings' | 'clients'>('overview');
   const [dateRange, setDateRange] = useState<'7d' | '30d' | 'this_month'>('30d');
+  const [reportType, setReportType] = useState<string>('followers');
   
   // Auth State
   const [token, setToken] = useState<string | null>(localStorage.getItem('dnexus_token'));
@@ -1089,6 +1103,9 @@ export default function App() {
   const metaImpressions = filteredMeta.reduce((acc, curr) => acc + curr.impressions, 0);
   const metaClicks = filteredMeta.reduce((acc, curr) => acc + curr.clicks, 0);
   const metaConversions = filteredMeta.reduce((acc, curr) => acc + (curr.purchases || 0) + (curr.leads || 0), 0);
+  const metaFollowers = filteredMeta.reduce((acc, curr) => acc + (curr.instagram_followers || 0), 0);
+  const metaVideoPlays = filteredMeta.reduce((acc, curr) => acc + (curr.video_plays || 0), 0);
+  const metaReach = filteredMeta.reduce((acc, curr) => acc + (curr.reach || 0), 0);
 
   const googleSpend = filteredGoogle.reduce((acc, curr) => acc + curr.cost, 0);
   const googleImpressions = filteredGoogle.reduce((acc, curr) => acc + curr.impressions, 0);
@@ -1897,112 +1914,280 @@ export default function App() {
               </div>
             ) : (
               <>
-                {/* Meta KPI Cards */}
-                <div className="kpi-grid">
-                  <div className="kpi-card">
-                    <div className="kpi-card-header">
-                      <span className="kpi-title">Gasto Meta</span>
-                      <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-meta-glow)', color: 'var(--color-meta)' }}>
-                        <DollarSign size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="kpi-value">R$ {metaSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
-                    </div>
-                  </div>
-
-                  <div className="kpi-card">
-                    <div className="kpi-card-header">
-                      <span className="kpi-title">Impressões</span>
-                      <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                        <Eye size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="kpi-value">{metaImpressions.toLocaleString('pt-BR')}</div>
-                    </div>
-                  </div>
-
-                  <div className="kpi-card">
-                    <div className="kpi-card-header">
-                      <span className="kpi-title">Cliques</span>
-                      <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                        <MousePointerClick size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="kpi-value">{metaClicks.toLocaleString('pt-BR')}</div>
-                    </div>
-                  </div>
-
-                  <div className="kpi-card">
-                    <div className="kpi-card-header">
-                      <span className="kpi-title">Ações de Conversão</span>
-                      <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-success-glow)', color: 'var(--color-success)' }}>
-                        <Target size={20} />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="kpi-value">{metaConversions.toLocaleString('pt-BR')}</div>
-                    </div>
+                {/* Tipo de Relatório Selector */}
+                <div className="panel-card" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'flex-start', gap: '12px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Tipo de Relatório</span>
+                    <select 
+                      value={reportType} 
+                      onChange={(e) => setReportType(e.target.value)}
+                      className="custom-select" 
+                      style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', width: '220px', fontSize: '13px', cursor: 'pointer' }}
+                    >
+                      <option value="followers">Seguidores</option>
+                    </select>
                   </div>
                 </div>
+
+                {/* Meta KPI Cards */}
+                {reportType === 'followers' ? (
+                  <div className="kpi-grid">
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Valor Investido</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-meta-glow)', color: 'var(--color-meta)' }}>
+                          <DollarSign size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">R$ {metaSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Alcance</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+                          <Users size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">{metaReach.toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Reproduções de Vídeo</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+                          <Play size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">{metaVideoPlays.toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Seguidores</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-success-glow)', color: 'var(--color-success)' }}>
+                          <UserPlus size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">{metaFollowers.toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Custo Por Seguidor</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+                          <DollarSign size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">
+                          {metaFollowers > 0 
+                            ? `R$ ${(metaSpend / metaFollowers).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                            : 'R$ 0,00'
+                          }
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="kpi-grid">
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Gasto Meta</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-meta-glow)', color: 'var(--color-meta)' }}>
+                          <DollarSign size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">R$ {metaSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Impressões</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+                          <Eye size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">{metaImpressions.toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Cliques</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+                          <MousePointerClick size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">{metaClicks.toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+
+                    <div className="kpi-card">
+                      <div className="kpi-card-header">
+                        <span className="kpi-title">Ações de Conversão</span>
+                        <div className="kpi-icon-wrapper" style={{ backgroundColor: 'var(--color-success-glow)', color: 'var(--color-success)' }}>
+                          <Target size={20} />
+                        </div>
+                      </div>
+                      <div>
+                        <div className="kpi-value">{metaConversions.toLocaleString('pt-BR')}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Detailed Table */}
                 <div className="panel-card">
                   <div className="panel-card-header">
-                    <span className="panel-card-title">Métricas de Anúncio Real (Meta Nomenclaturas)</span>
+                    <span className="panel-card-title">
+                      {reportType === 'followers' ? 'Relatório de Seguidores' : 'Métricas de Anúncio Real (Meta Nomenclaturas)'}
+                    </span>
                   </div>
                   <div className="table-wrapper">
                     <table className="custom-table">
-                      <thead>
-                        <tr>
-                          <th>ID do Anúncio</th>
-                          <th>Nome do Anúncio</th>
-                          <th>Conjunto de Anúncios</th>
-                          <th>Campanha</th>
-                          <th>Alcance (Reach)</th>
-                          <th>Impressões</th>
-                          <th>Cliques no Link</th>
-                          <th>Valor Gasto</th>
-                          <th>Checkouts Iniciados</th>
-                          <th>Leads</th>
-                          <th>Compras</th>
-                          <th>Valor de Compras</th>
-                          <th>Novas Conversas</th>
-                          <th>Reproduções de Vídeo</th>
-                          <th>Visualizações 3s</th>
-                          <th>Visualizações 2s Cont.</th>
-                          <th>Visualizações 15s</th>
-                          <th>ThruPlays</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredMeta.slice(0, 15).map((m, idx) => {
-                          return (
-                            <tr key={idx}>
-                              <td>{m.ad_id || '-'}</td>
-                              <td style={{ fontWeight: 600 }}>{m.ad_name || '-'}</td>
-                              <td>{m.adset_name || '-'}</td>
-                              <td>{m.campaign_name || '-'}</td>
-                              <td>{(m.reach || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.impressions || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.link_clicks || 0).toLocaleString('pt-BR')}</td>
-                              <td>R$ {(m.spend || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                              <td>{(m.checkouts_initiated || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.leads || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.purchases || 0).toLocaleString('pt-BR')}</td>
-                              <td>R$ {(m.purchases_conversion_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                              <td>{(m.new_messaging_connections || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.video_plays || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.video_3_sec_views || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.video_2_sec_continuous_views || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.video_15_sec_views || 0).toLocaleString('pt-BR')}</td>
-                              <td>{(m.thruplays || 0).toLocaleString('pt-BR')}</td>
+                      {reportType === 'followers' ? (
+                        <>
+                          <thead>
+                            <tr>
+                              <th>Mídia</th>
+                              <th>Campanha</th>
+                              <th>Anúncio</th>
+                              <th>Valor Investido</th>
+                              <th>Alcance</th>
+                              <th>Impressões</th>
+                              <th>Reproduções de Vídeo</th>
+                              <th>Seguidores</th>
+                              <th>Custo Por Seguidor</th>
                             </tr>
-                          );
-                        })}
-                      </tbody>
+                          </thead>
+                          <tbody>
+                            {filteredMeta.slice(0, 15).map((m, idx) => {
+                              const cpf = m.instagram_followers && m.instagram_followers > 0 ? (m.spend || 0) / m.instagram_followers : 0;
+                              return (
+                                <tr key={idx}>
+                                  <td>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                      {m.ad_thumbnail_url ? (
+                                        <img 
+                                          src={m.ad_thumbnail_url} 
+                                          alt="Ad" 
+                                          style={{ width: '36px', height: '36px', borderRadius: '4px', objectFit: 'cover', border: '1px solid var(--border-color)' }} 
+                                        />
+                                      ) : (
+                                        <div style={{ width: '36px', height: '36px', borderRadius: '4px', backgroundColor: 'rgba(255,255,255,0.05)', border: '1px solid var(--border-color)' }} />
+                                      )}
+                                      {m.ad_preview_url && (
+                                        <a 
+                                          href={m.ad_preview_url} 
+                                          target="_blank" 
+                                          rel="noopener noreferrer" 
+                                          title="Visualizar Anúncio"
+                                          style={{ color: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                        >
+                                          <ArrowUpRight size={16} />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </td>
+                                  <td>{m.campaign_name || '-'}</td>
+                                  <td style={{ fontWeight: 600 }}>{m.ad_name || '-'}</td>
+                                  <td>R$ {(m.spend || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                  <td>{(m.reach || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.impressions || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.video_plays || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.instagram_followers || 0).toLocaleString('pt-BR')}</td>
+                                  <td>
+                                    {cpf > 0 
+                                      ? `R$ ${cpf.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                      : '-'
+                                    }
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                          <tfoot style={{ fontWeight: 'bold', borderTop: '2px solid var(--border-color)', backgroundColor: 'rgba(255,255,255,0.02)' }}>
+                            <tr>
+                              <td colSpan={3}>Resumo Total / Média</td>
+                              <td>R$ {metaSpend.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                              <td>{metaReach.toLocaleString('pt-BR')}</td>
+                              <td>{metaImpressions.toLocaleString('pt-BR')}</td>
+                              <td>{metaVideoPlays.toLocaleString('pt-BR')}</td>
+                              <td>{metaFollowers.toLocaleString('pt-BR')}</td>
+                              <td>
+                                {metaFollowers > 0 
+                                  ? `R$ ${(metaSpend / metaFollowers).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                  : '-'
+                                }
+                              </td>
+                            </tr>
+                          </tfoot>
+                        </>
+                      ) : (
+                        <>
+                          <thead>
+                            <tr>
+                              <th>ID do Anúncio</th>
+                              <th>Nome do Anúncio</th>
+                              <th>Conjunto de Anúncios</th>
+                              <th>Campanha</th>
+                              <th>Alcance (Reach)</th>
+                              <th>Impressões</th>
+                              <th>Cliques no Link</th>
+                              <th>Valor Gasto</th>
+                              <th>Checkouts Iniciados</th>
+                              <th>Leads</th>
+                              <th>Compras</th>
+                              <th>Valor de Compras</th>
+                              <th>Novas Conversas</th>
+                              <th>Reproduções de Vídeo</th>
+                              <th>Visualizações 3s</th>
+                              <th>Visualizações 2s Cont.</th>
+                              <th>Visualizações 15s</th>
+                              <th>ThruPlays</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {filteredMeta.slice(0, 15).map((m, idx) => {
+                              return (
+                                <tr key={idx}>
+                                  <td>{m.ad_id || '-'}</td>
+                                  <td style={{ fontWeight: 600 }}>{m.ad_name || '-'}</td>
+                                  <td>{m.adset_name || '-'}</td>
+                                  <td>{m.campaign_name || '-'}</td>
+                                  <td>{(m.reach || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.impressions || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.link_clicks || 0).toLocaleString('pt-BR')}</td>
+                                  <td>R$ {(m.spend || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                  <td>{(m.checkouts_initiated || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.leads || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.purchases || 0).toLocaleString('pt-BR')}</td>
+                                  <td>R$ {(m.purchases_conversion_value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+                                  <td>{(m.new_messaging_connections || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.video_plays || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.video_3_sec_views || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.video_2_sec_continuous_views || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.video_15_sec_views || 0).toLocaleString('pt-BR')}</td>
+                                  <td>{(m.thruplays || 0).toLocaleString('pt-BR')}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </>
+                      )}
                     </table>
                   </div>
                 </div>

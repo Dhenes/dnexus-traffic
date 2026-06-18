@@ -162,6 +162,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const metaData: any = await metaRes.json();
         const insights = metaData.data || [];
 
+        // Coletar todos os ad_ids únicos retornados nos insights
+        const adIds = Array.from(new Set(insights.map((item: any) => item.ad_id).filter(Boolean))) as string[];
+        const adDetailsMap: { [adId: string]: { previewUrl: string; thumbnailUrl: string } } = {};
+
+        // Fazer chamada secundária em lotes para recuperar links de prévia e imagens
+        if (adIds.length > 0) {
+          const chunkSize = 40;
+          for (let i = 0; i < adIds.length; i += chunkSize) {
+            const chunk = adIds.slice(i, i + chunkSize);
+            const idsQuery = chunk.join(',');
+            const detailsUrl = `https://graph.facebook.com/v19.0/?ids=${idsQuery}&fields=preview_shareable_link,creative{thumbnail_url,image_url,picture}&access_token=${accessToken}`;
+            
+            try {
+              const detailsRes = await fetch(detailsUrl);
+              if (detailsRes.ok) {
+                const detailsData: any = await detailsRes.json();
+                chunk.forEach((adId) => {
+                  const adObj = detailsData[adId];
+                  if (adObj) {
+                    const previewUrl = adObj.preview_shareable_link || '';
+                    const thumbnailUrl = adObj.creative?.thumbnail_url || adObj.creative?.image_url || adObj.creative?.picture || '';
+                    adDetailsMap[adId] = { previewUrl, thumbnailUrl };
+                  }
+                });
+              } else {
+                console.error(`Erro ao buscar mídias dos anúncios da Meta: ${detailsRes.statusText}`);
+              }
+            } catch (err) {
+              console.error('Erro na chamada secundária de mídias dos anúncios da Meta', err);
+            }
+          }
+        }
+
         insights.forEach((item: any) => {
           const dateStr = item.date_start;
           const adId = item.ad_id || '';
@@ -199,6 +232,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           const video2SecContinuousViews = getActionValue(item.video_continuous_2_sec_watched_actions, ['video_view']);
           const video15SecViews = getActionValue(item.video_15_sec_watched_actions, ['video_view']);
 
+          // Obter mídias do mapa auxiliar
+          const adMedia = adDetailsMap[adId] || { previewUrl: '', thumbnailUrl: '' };
+          const adPreviewUrl = adMedia.previewUrl;
+          const adThumbnailUrl = adMedia.thumbnailUrl;
+
           const id = `${targetClientId}_meta_${adId}_${dateStr}`;
           
           batchStatements.push(
@@ -209,7 +247,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 video_p25_views, video_p50_views, video_p75_views, video_p95_views, video_p100_views, 
                 likes, comments, saves, shares, instagram_followers, 
                 link_clicks, checkouts_initiated, leads, new_messaging_connections, purchases, purchases_conversion_value, 
-                video_plays, video_3_sec_views, video_2_sec_continuous_views, video_15_sec_views, updated_at
+                video_plays, video_3_sec_views, video_2_sec_continuous_views, video_15_sec_views, 
+                ad_preview_url, ad_thumbnail_url, updated_at
               )
               VALUES (
                 ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 
@@ -217,7 +256,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 ?16, ?17, ?18, ?19, ?20, 
                 ?21, ?22, ?23, ?24, ?25, 
                 ?26, ?27, ?28, ?29, ?30, ?31, 
-                ?32, ?33, ?34, ?35, ?36
+                ?32, ?33, ?34, ?35, 
+                ?36, ?37, ?38
               )
               ON CONFLICT(id) DO UPDATE SET
                 campaign_name = ?5,
@@ -250,14 +290,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 video_3_sec_views = ?33,
                 video_2_sec_continuous_views = ?34,
                 video_15_sec_views = ?35,
-                updated_at = ?36
+                ad_preview_url = ?36,
+                ad_thumbnail_url = ?37,
+                updated_at = ?38
             `).bind(
               id, targetClientId, dateStr, campaignId, campaignName, adId, adName, adsetName, reach, impressions, clicks, spend,
               landingPageViews, videoViews, thruplays,
               videoP25, videoP50, videoP75, videoP95, videoP100,
               likes, comments, saves, shares, instagramFollowers,
               linkClicks, checkoutsInitiated, leads, newMessagingConnections, purchases, purchasesConversionValue,
-              videoPlays, video3SecViews, video2SecContinuousViews, video15SecViews, timestamp
+              videoPlays, video3SecViews, video2SecContinuousViews, video15SecViews,
+              adPreviewUrl, adThumbnailUrl, timestamp
             )
           );
         });
