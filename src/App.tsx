@@ -1979,7 +1979,7 @@ export default function App() {
                       className="custom-select" 
                       style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-primary)', width: '220px', fontSize: '13px', cursor: 'pointer' }}
                     >
-                      <option value="followers">Seguidores</option>
+                      <option value="followers">Visitantes do Perfil</option>
                     </select>
                   </div>
                 </div>
@@ -2037,7 +2037,7 @@ export default function App() {
 
                     <div className="kpi-card">
                       <div className="kpi-card-header">
-                        <span className="kpi-title">Custo Por Visitante do Perfil</span>
+                        <span className="kpi-title">Custo por Visita</span>
                         <div className="kpi-icon-wrapper" style={{ backgroundColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
                           <DollarSign size={20} />
                         </div>
@@ -2108,7 +2108,7 @@ export default function App() {
                 <div className="panel-card">
                   <div className="panel-card-header">
                     <span className="panel-card-title">
-                      {reportType === 'followers' ? 'Relatório de Seguidores' : 'Métricas de Anúncio Real (Meta Nomenclaturas)'}
+                      {reportType === 'followers' ? 'Relatório de Visitantes do Perfil' : 'Métricas de Anúncio Real (Meta Nomenclaturas)'}
                     </span>
                   </div>
                   <div className="table-wrapper">
@@ -2137,7 +2137,7 @@ export default function App() {
                                 Visitantes do Perfil {renderSortIndicator('instagram_profile_visits')}
                               </th>
                               <th onClick={() => handleMetaSort('cpv')} style={{ cursor: 'pointer', userSelect: 'none' }}>
-                                Custo Por Visitante do Perfil {renderSortIndicator('cpv')}
+                                Custo por Visita {renderSortIndicator('cpv')}
                               </th>
                             </tr>
                           </thead>
